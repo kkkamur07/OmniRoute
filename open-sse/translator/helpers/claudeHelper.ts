@@ -6,6 +6,7 @@ import { NON_ANTHROPIC_THINKING_PLACEHOLDER } from "../../utils/reasoningPlaceho
 import { sanitizeToolId } from "./schemaCoercion.ts";
 import { isRestoredClaudeThinkingBlock } from "../../services/claudeThinkingStore.ts";
 import { isRegisteredFeatureFlagEnabled } from "../../utils/registeredFeatureFlag.ts";
+import { claudeProviderAcceptsCacheControl } from "../../utils/cacheControlPolicy.ts";
 
 /**
  * The DEFAULT blob is a real encrypted thought from an unrelated
@@ -553,12 +554,7 @@ export function prepareClaudeRequest(
 
   // 1. System: remove all cache_control, add only to the last block with the provider TTL
   // In passthrough mode, preserve existing cache_control markers
-  const isVertexClaudeProvider = provider === "vertex" || provider === "vertex-partner";
-  const supportsPromptCaching =
-    provider === "claude" ||
-    provider === "anthropic" ||
-    isVertexClaudeProvider ||
-    provider?.startsWith?.("anthropic-compatible-");
+  const supportsPromptCaching = claudeProviderAcceptsCacheControl(provider);
   // Vertex's documented default is a five-minute ephemeral cache. Omitting ttl is
   // both cheaper and compatible with Claude models that reject the optional 1h TTL.
   const isKimiCoding = provider === "kimi-coding" || provider === "kimi-coding-apikey";

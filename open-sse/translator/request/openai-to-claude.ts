@@ -147,6 +147,56 @@ export function stripEmptyTextBlocks(content: unknown[] | undefined): unknown[] 
     });
 }
 
+function hasMarkedBlock(blocks: unknown): boolean {
+  return (
+    Array.isArray(blocks) &&
+    blocks.some((block) => Boolean((block as Record<string, unknown> | null)?.cache_control))
+  );
+}
+
+/** A client marker on an OpenAI tool sits on the wrapper or on the definition it wraps. */
+function clientToolCacheControl(tool: Record<string, unknown>): ClaudeTool["cache_control"] {
+  return (tool.cache_control ??
+    unwrapOpenAIToolDefinition(tool).cache_control) as ClaudeTool["cache_control"];
+}
+
+/** Put a client marker on the block the part just became (if it became one). */
+function carryClientCacheControl(
+  blocks: ClaudeContentBlock[],
+  blockCountBefore: number,
+  part: Record<string, unknown>,
+  keepClientCacheControl: boolean
+): void {
+  if (!keepClientCacheControl || !part.cache_control || blocks.length === blockCountBefore) return;
+  const block = blocks[blocks.length - 1];
+  if (block.cache_control === undefined) block.cache_control = part.cache_control;
+}
+
+/**
+ * System blocks for a request whose client manages its own breakpoints. Text stays merged except
+ * right after a marker: folding later text into the marked block would pull whatever varies there
+ * into the cached prefix.
+ */
+function buildClientManagedSystemBlocks(
+  systemParts: string[],
+  partMarkers: Map<number, ClaudeSystemBlock["cache_control"]>
+): ClaudeSystemBlock[] {
+  const blocks: ClaudeSystemBlock[] = [];
+  let run: string[] = [];
+  const flush = (cacheControl?: ClaudeSystemBlock["cache_control"]) => {
+    const text = run.filter(Boolean).join("\n");
+    run = [];
+    if (text)
+      blocks.push({ type: "text", text, ...(cacheControl && { cache_control: cacheControl }) });
+  };
+  systemParts.forEach((part, index) => {
+    run.push(part);
+    if (partMarkers.has(index)) flush(partMarkers.get(index));
+  });
+  flush();
+  return blocks;
+}
+
 /**
  * T15: Normalize content to string form.
  * Handles both string and array-of-blocks forms (Cursor, Codex 2.x, etc.).
@@ -175,6 +225,17 @@ export function openaiToClaudeRequest(
   const disableToolPrefix = body?._disableToolPrefix === true;
   const routedProvider = credentials?._provider;
   const isKimiCoding = routedProvider === "kimi-coding" || routedProvider === "kimi-coding-apikey";
+  // Set by translateRequest when the client's own breakpoints must survive (Claude targets that
+  // accept them). Once the client placed any, the gateway adds none: a tail marker just before
+  // the last message would rewrite the varying suffix on every call.
+  const keepClientCacheControl = credentials?._preserveCacheControl === true;
+  let clientManagesCache =
+    keepClientCacheControl &&
+    (hasMarkedBlock(body.system) ||
+      (Array.isArray(body.tools) &&
+        body.tools.some((tool) =>
+          Boolean(tool && typeof tool === "object" && clientToolCacheControl(tool))
+        )));
 
   // Tool name mapping for Claude OAuth (capitalizedName → originalName)
   const toolNameMap = new Map();
@@ -348,6 +409,7 @@ export function openaiToClaudeRequest(
 
   // Messages
   const systemParts: string[] = [];
+  const systemPartMarkers = new Map<number, ClaudeSystemBlock["cache_control"]>();
 
   if (body.messages && Array.isArray(body.messages)) {
     // Extract system messages (T15: handle both string and array content)
@@ -355,6 +417,19 @@ export function openaiToClaudeRequest(
     // for system-level instructions, and it must reach the Claude system field, not become an assistant turn.
     for (const msg of body.messages) {
       if (msg.role === "system" || msg.role === "developer") {
+        if (
+          keepClientCacheControl &&
+          Array.isArray(msg.content) &&
+          msg.content.some((part) => part?.type === "text" && part.text && part.cache_control)
+        ) {
+          for (const part of msg.content) {
+            if (part?.type !== "text" || !part.text) continue;
+            systemParts.push(String(part.text));
+            if (part.cache_control)
+              systemPartMarkers.set(systemParts.length - 1, part.cache_control);
+          }
+          continue;
+        }
         systemParts.push(
           typeof msg.content === "string" ? msg.content : normalizeContentToString(msg.content)
         );
@@ -419,7 +494,8 @@ export function openaiToClaudeRequest(
         pendingToolUseIds,
         result.thinking && typeof result.thinking.type === "string"
           ? result.thinking.type
-          : undefined
+          : undefined,
+        keepClientCacheControl
       );
       if (newRole === "assistant") {
         pendingToolUseIds = blocks.filter((b) => b.type === "tool_use").map((b) => String(b.id));
@@ -469,8 +545,12 @@ export function openaiToClaudeRequest(
 
     result.messages = enforceToolResultAdjacency(result.messages);
 
+    clientManagesCache ||=
+      keepClientCacheControl &&
+      (systemPartMarkers.size > 0 || result.messages.some((msg) => hasMarkedBlock(msg.content)));
+
     // Add cache_control to last assistant message
-    for (let i = result.messages.length - 1; i >= 0; i--) {
+    for (let i = result.messages.length - 1; i >= 0 && !clientManagesCache; i--) {
       const message = result.messages[i];
       if (
         message.role === "assistant" &&
@@ -498,6 +578,7 @@ export function openaiToClaudeRequest(
         // Unwrap spec, bare `{ function }` and Chat Completions `{ type: "custom", custom }`
         // tools; reading the name off the wrapper itself silently dropped the tool.
         const toolData = unwrapOpenAIToolDefinition(tool);
+        const toolCacheControl = keepClientCacheControl ? clientToolCacheControl(tool) : undefined;
         const originalName = typeof toolData.name === "string" ? toolData.name.trim() : "";
 
         if (!originalName) {
@@ -535,6 +616,7 @@ export function openaiToClaudeRequest(
           // Anthropic tools accept `strict` (structured tool inputs); dropping it silently
           // relaxed schema enforcement the client asked for (9router#4172).
           ...(toolData.strict === true ? { strict: true } : {}),
+          ...(toolCacheControl ? { cache_control: toolCacheControl } : {}),
         };
       })
       .filter((tool): tool is ClaudeTool => Boolean(tool));
@@ -556,7 +638,7 @@ export function openaiToClaudeRequest(
 
     // Cache breakpoint on the last non-defer-loading tool — Anthropic
     // rejects cache_control on defer_loading tools.
-    for (let i = result.tools.length - 1; i >= 0; i--) {
+    for (let i = result.tools.length - 1; i >= 0 && !clientManagesCache; i--) {
       if (!result.tools[i].defer_loading) {
         result.tools[i].cache_control = createDefaultClaudeCacheControl(routedProvider);
         break;
@@ -606,19 +688,22 @@ export function openaiToClaudeRequest(
   // Anthropic array through the /chat/completions endpoint). Without this, the system
   // prompt is silently dropped when no role="system" messages exist in body.messages.
   if (systemParts.length > 0) {
-    const systemText = systemParts.join("\n");
-    const systemBlock = {
-      type: "text",
-      text: systemText,
-      cache_control: createDefaultClaudeCacheControl(routedProvider),
-    };
+    const systemBlocks: ClaudeSystemBlock[] = clientManagesCache
+      ? buildClientManagedSystemBlocks(systemParts, systemPartMarkers)
+      : [
+          {
+            type: "text",
+            text: systemParts.join("\n"),
+            cache_control: createDefaultClaudeCacheControl(routedProvider),
+          },
+        ];
     // Merge with existing body.system if present
     if (Array.isArray(body.system)) {
-      result.system = [...body.system, systemBlock];
+      result.system = [...body.system, ...systemBlocks];
     } else if (typeof body.system === "string" && body.system.length > 0) {
-      result.system = [{ type: "text", text: body.system }, systemBlock];
+      result.system = [{ type: "text", text: body.system }, ...systemBlocks];
     } else {
-      result.system = [systemBlock];
+      result.system = systemBlocks;
     }
   } else if (body.system) {
     // No role="system" messages, but body.system exists — pass through as-is
@@ -661,7 +746,8 @@ function getContentBlocksFromMessage(
     ambiguousToolUseIds?: Set<string>;
   } = {},
   pendingToolUseIds: string[] = [],
-  thinkingTypeForRequest: string | undefined = undefined
+  thinkingTypeForRequest: string | undefined = undefined,
+  keepClientCacheControl = false
 ) {
   const blocks: ClaudeContentBlock[] = [];
 
@@ -699,6 +785,7 @@ function getContentBlocksFromMessage(
       }
     } else if (Array.isArray(msg.content)) {
       for (const part of msg.content) {
+        const blockCountBefore = blocks.length;
         if (part.type === "text" && part.text) {
           blocks.push({ type: "text", text: part.text });
         } else if (part.type === "tool_result") {
@@ -758,11 +845,13 @@ function getContentBlocksFromMessage(
             });
           }
         }
+        carryClientCacheControl(blocks, blockCountBefore, part, keepClientCacheControl);
       }
     }
   } else if (msg.role === "assistant") {
     if (Array.isArray(msg.content)) {
       for (const part of msg.content) {
+        const blockCountBefore = blocks.length;
         if (part.type === "text" && part.text) {
           blocks.push({ type: "text", text: part.text });
         } else if (part.type === "thinking" || part.type === "redacted_thinking") {
@@ -801,6 +890,7 @@ function getContentBlocksFromMessage(
             });
           }
         }
+        carryClientCacheControl(blocks, blockCountBefore, part, keepClientCacheControl);
       }
     } else if (msg.content) {
       const text = typeof msg.content === "string" ? msg.content : extractTextContent(msg.content);

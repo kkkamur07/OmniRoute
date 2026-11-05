@@ -2162,6 +2162,8 @@ async function handleChatCoreInner({
     targetModel: effectiveModel,
     settings: { alwaysPreserveClientCache: cacheControlMode },
     connectionCacheOverride,
+    // Native Claude bodies are preserved or relayed on their own paths.
+    clientBody: isClaudePassthrough || isClaudeCodeCompatible ? undefined : body,
   });
 
   if (preserveCacheControl) {

@@ -11,6 +11,7 @@ import {
 } from "./helpers/claudeHelper.ts";
 import { filterToOpenAIFormat } from "./helpers/openaiHelper.ts";
 import {
+  claudeProviderAcceptsCacheControl,
   providerHonorsOpenAIFormatCacheControl,
   providerAcceptsPromptCacheBreakpoint,
   resolveConnectionCacheOverride,
@@ -629,8 +630,19 @@ export function translateRequest(
           const hasCopilot = options?.copilotClient === true;
           const hasProvider = provider != null;
           const videoSensitive = options?.videoTranscriptSensitive === true;
+          // The target translator rebuilds every block, so it has to know to keep the client's
+          // own breakpoints (and then add none of its own). Claude targets that accept them only.
+          const preserveClaudeCacheMarkers =
+            options?.preserveCacheControl === true &&
+            targetFormat === FORMATS.CLAUDE &&
+            claudeProviderAcceptsCacheControl(provider, connectionCacheOverride);
           const translationCredentials =
-            hasNs || hasPreCompression || hasCopilot || hasProvider || videoSensitive
+            hasNs ||
+            hasPreCompression ||
+            hasCopilot ||
+            hasProvider ||
+            videoSensitive ||
+            preserveClaudeCacheMarkers
               ? {
                   ...(credentials && typeof credentials === "object" ? credentials : {}),
                   ...(hasNs
@@ -652,6 +664,7 @@ export function translateRequest(
                   ...(hasProvider ? { _provider: provider } : {}),
                   // Video-derived requests must not replay retained Claude signed thinking.
                   ...(videoSensitive ? { _videoTranscriptSensitive: true } : {}),
+                  ...(preserveClaudeCacheMarkers ? { _preserveCacheControl: true } : {}),
                 }
               : credentials;
           // #9780 — carry the Responses namespace identity map across the pivot.

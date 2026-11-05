@@ -192,6 +192,49 @@ export function providerHonorsOpenAIFormatCacheControl(
 }
 
 /**
+ * Whether a Claude-format upstream accepts explicit `cache_control` breakpoints. Other
+ * Claude-shape endpoints (kimi-coding, glm, minimax, ...) are not Anthropic and only get markers
+ * they already got before; a connection can opt out through its cache override.
+ */
+export function claudeProviderAcceptsCacheControl(
+  provider: string | null | undefined,
+  connectionCacheOverride?: ConnectionCacheOverride | null
+): boolean {
+  if (
+    connectionCacheOverride?.supportsPromptCaching === false ||
+    connectionCacheOverride?.cacheControlPassthrough === "strip"
+  ) {
+    return false;
+  }
+  return (
+    provider === "claude" ||
+    provider === "anthropic" ||
+    provider === "vertex" ||
+    provider === "vertex-partner" ||
+    provider?.startsWith?.("anthropic-compatible-") === true
+  );
+}
+
+/** Early-exit scan for a client `cache_control` on a message content part or native system block. */
+function bodyHasClientCacheMarkers(body: Record<string, unknown>): boolean {
+  const hasMarkedBlock = (blocks: unknown): boolean => {
+    if (!Array.isArray(blocks)) return false;
+    for (const block of blocks) {
+      if (block && typeof block === "object" && (block as Record<string, unknown>).cache_control) {
+        return true;
+      }
+    }
+    return false;
+  };
+  if (hasMarkedBlock(body.system)) return true;
+  if (!Array.isArray(body.messages)) return false;
+  for (const message of body.messages) {
+    if (hasMarkedBlock((message as Record<string, unknown> | null)?.content)) return true;
+  }
+  return false;
+}
+
+/**
  * Providers that accept OpenAI's explicit prompt-caching field
  * `prompt_cache_breakpoint` on content parts (GPT-5.6+ explicit mode). Kept
  * separate from OPENAI_FORMAT_CACHE_CONTROL_PROVIDERS: that set is about
@@ -315,6 +358,9 @@ export function isDeterministicStrategy(
  *   callers/telemetry; no longer gates preservation)
  * @param targetProvider - The target provider for the request
  * @param settings - Cache control settings from database (optional)
+ * @param clientBody - The client's request body. In auto mode, a non caching-aware client that
+ *   put its own `cache_control` on a content part asked for caching explicitly, so a Claude target
+ *   that accepts markers preserves them. Only scanned when it can change the outcome.
  * @returns true if cache_control should be preserved, false if OmniRoute should manage it
  */
 export function shouldPreserveCacheControl({
@@ -324,6 +370,7 @@ export function shouldPreserveCacheControl({
   targetModel,
   settings,
   connectionCacheOverride,
+  clientBody,
 }: {
   userAgent: string | null | undefined;
   isCombo: boolean;
@@ -333,6 +380,7 @@ export function shouldPreserveCacheControl({
   targetModel?: string | null;
   settings?: CacheControlSettings;
   connectionCacheOverride?: ConnectionCacheOverride | null;
+  clientBody?: Record<string, unknown> | null;
 }): boolean {
   // User override takes precedence
   if (settings?.alwaysPreserveClientCache === "always") {
@@ -344,7 +392,12 @@ export function shouldPreserveCacheControl({
 
   // Auto mode: must be a caching-aware client…
   if (!isClaudeCodeClient(userAgent)) {
-    return false;
+    return (
+      targetFormat === "claude" &&
+      clientBody != null &&
+      claudeProviderAcceptsCacheControl(targetProvider, connectionCacheOverride) &&
+      bodyHasClientCacheMarkers(clientBody)
+    );
   }
 
   // …talking to a provider that supports prompt caching.
