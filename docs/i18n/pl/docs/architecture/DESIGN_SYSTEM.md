@@ -6,26 +6,127 @@
 
 > **Status:** deska rozdzielcza jest zbudowana na** Zestaw Keak CI UI** (`@keak/cheaper-inference-ui-kit`), sprzedawany jako obszar roboczy `packages/ui-kit` (`@omniroute/ui-kit`; migawka nadrzędna jest przypinana w `packages/ui-kit/UPSTREAM.md` i chroniona przez `npm run check:ui-kit-snapshot`). Światło jest tematem kanonicznym; domyślna preferencja to `system`. Domyślna paleta to paleta zestawu** Wydania** wygląd (ciepłe papierowe neutralne odcienie i miedziany akcent `#e5ac82`, `packages/ui-kit/src/ci-editions.css`); Ustawienia → Wygląd → Oferty palety kolorów** Klasyczny** , żetony bazowe zestawu z limonkowym akcentem. Switzer to pojedyncza rodzina dla UI, wyświetlacza i tekstu kodu (`--ci-font-ui`; `--ci-font-display` i `--ci-font-mono` na to odpowiadają), hostowana samodzielnie przez sam zestaw (`packages/ui-kit/src/ci-fonts.css`, importowany przez `ci-tokens.css`). Skrypty, których brakuje Switzerowi, przechodzą przez glif po glifie (`src/app/globals.css`): Inter dla cyrylicy, greckiego i wietnamskiego oraz, tylko pod `html[dir="rtl"]`, Vazirmatn dla pisma arabskiego. Każda ikona jest glifem Lucide.
 
-## 1. Gdzie żyją rzeczy
+## 1. Gdzie co się znajduje
 
-- **Zestaw.** `packages/ui-kit/src` jest kopią bajt po bajcie nadrzędnego `src/` w zatwierdzeniu przypiętym w `packages/ui-kit/UPSTREAM.md` (które rejestruje również autoryzację licencji); `PATCHES.md` wyświetla listę lokalnych poprawek (brak). Jest używany jako źródło, bez kompilacji: `next.config.mjs` go transponuje, a `tsconfig.json` mapuje `@omniroute/ui-kit` → `packages/ui-kit/src` i `@omniroute/ui-kit/*` → `packages/ui-kit/src/*` (`vitest.config.ts` i `vitest.mcp.config.ts` noszą ten sam alias). Importuj komponent zestawu według jego ścieżki podrzędnej (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…), nigdy przez beczkę `@omniroute/ui-kit` : beczka ściąga każdy komponent (w tym selektor daty) do każdego importera. Arkusz stylów zestawu wchodzi przez `src/app/globals.css` (`@import "../../packages/ui-kit/src/ci-styles.css"`, kompletny arkusz: rdzeń `ci-ui.css` plus każda rodzina wzorców).
-- **Żetony.** `packages/ui-kit/src/ci-tokens.css` deklaruje tokeny `--ci-*` ; `src/app/globals.css` łączy je ze starszymi nazwami OmniRoute (`--color-*`, `--radius-*`, `--font-sans`/`--font-mono`, `--table-*`, `--orch-status-*`, `--color-fd-*`), więc istniejące odczyty `var(--color-*)` i narzędzia Tailwind nadal działają. Nowy kod używa narzędzi Tailwind (`bg-surface`, `text-text-muted`, `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) lub klas zestawu — nigdy nie ma wartości szesnastkowej (`tests/unit/design-kit-bridge.test.ts` wymusza most). `text-primary` jest przekształcane na `--color-primary-ink` poprzez `--text-color-primary`, więc główny tekst pozostaje czytelny, podczas gdy `bg-primary`/`border-primary` zachowuje powierzchnię akcentującą: w sekcji Edycje jest to `--ci-color-accent-active` zestawu (głęboki miedziany `#99562f` w świetle, miedziany akcent w ciemności); pod Classic, lime-800 w świetle i limonkowy akcent w ciemności. Seria wykresów wykorzystuje `--color-chart-1` … `--color-chart-5`.
-- **Motywy.** `<html className="ci-theme">` (`src/app/layout.tsx`) włącza dokument do motywu zestawu. Preferowane jest `light`, `dark` lub `system` (`THEME_CONFIG.defaultTheme = "system"` w `src/shared/constants/appConfig.ts`; `system` następuje `prefers-color-scheme`). `applyTheme()` w `src/store/themeStore.ts` (odzwierciedlone przez `THEME_BOOT_SCRIPT`, wstawione w `src/app/layout.tsx`, które działa przed hydratacją) ustawia `data-theme="dark"|"light"` i przełącza razem klasę `.dark` na `<html>`. Zestaw ciemnych żetonów zestawu jest kluczowany na `data-theme="dark"` (`packages/ui-kit/src/ci-tokens.css`); własne ciemne przesłonięcia OmniRoute(blok `.dark` w `globals.css`) i starszy klucz narzędziowy Tailwind `dark:` w klasie `.dark`. Nie ma gotowych ustawień kolorów akcentujących: akcent zawsze pochodzi z zestawu, a trwałe ustawienie wstępne ze starszej wersji jest usuwane po załadowaniu sklepu.
-- **Palety.** Dwa, oba z zestawu (`src/shared/constants/appearancePalette.ts`): `editions`, domyślne i `classic`. Editions to atrybut `data-ci-appearance="editions"` zestawu na `<html>`, który `ci-editions.css` (importowany przez `ci-ui.css`) łączy z `data-theme`; Klasyczny jest brak atrybutu. Serwer układu głównego renderuje atrybut, więc odwiedzający, który nie ma żadnych zapisanych danych (lub nie ma JS) otrzymuje edycje na każdej powierzchni pulpitu nawigacyjnego —, logowania, `/status`, stron błędów, `/docs` i PWA. Wybór jest zachowywany obok motywu w tym samym sklepie `theme` (`palette`, `setPalette()`, `applyPalette()` w `src/store/themeStore.ts`) i stosowany przed malowaniem przez `THEME_BOOT_SCRIPT` (`src/shared/utils/themeBootScript.ts`, wstawiony w `<head>` układu), co usuwa atrybut tylko wtedy, gdy zapisaną paletą jest `"classic"`; `src/app/global-error.tsx`, poza układem głównym, stosuje go z tego samego sklepu. Nie umieszczaj `data-ci-appearance` na żadnym innym elemencie: zestaw dopasowuje go do `html:root:has([data-ci-appearance="editions"])`, więc jeden potomek zamieniłby cały dokument. Wariant Editions `data-ci-editions-variant="landing"` przeznaczony jest do stron marketingowych, a nie do pulpitu nawigacyjnego. Chrome przeglądarki: serwer renderuje domyślne Editions w `viewport.themeColor` (jeden znacznik na `prefers-color-scheme`) i manifest internetowy — `PWA_THEME_COLORS` w `src/shared/constants/pwaThemeColors.ts`, jedyne lustro Editions `--ci-color-background` (`#f3f1e9` / `#11120f`), przypięte do `ci-editions.css` przez `tests/unit/pwa-theme-colors.test.ts`. Aktywny `<meta name="theme-color">` następnie podąża za zapisaną paletą i trybem: `THEME_BOOT_SCRIPT` przepisuje znaczniki przed malowaniem, a akcje sklepu z motywami robią to przy każdej zmianie (`resolveThemeColor()` / `applyThemeColor()` w `src/shared/utils/themeColorMeta.ts`, z `CLASSIC_PAGE_BACKGROUND` odczytanym z `ciTokens` zestawu). Wyraźny motyw light/dark ustawia każdy znacznik w ten tryb; `system` zachowuje jeden kolor na schemat. Manifest pozostaje w wersjach: jest pobierany raz na instalację, bez preferencji. Monako odczytuje swoje kolory z sondy (`monacoKitTheme.ts`); w obszarze Editions odczyt sondy odwraca główny `data-theme` dla jednego przebiegu synchronicznego, ponieważ zestaw rozpoznaje Editions light/dark od głównego.
-- **Komponenty (adaptery).** `src/shared/components/index.tsx` przechowuje komponent OmniRoute API (te same nazwy, domyślne eksporty i rekwizyty), a podstawami za nim są adaptery zestawu: formularze (`Button`, `Input`, `Textarea`, `Checkbox`, `Select`, `Toggle`, `Badge`, `Card`), nakładki i informacje zwrotne (`Modal`/`ConfirmModal`, `Tooltip`/`InfoTooltip`, `NotificationToast`, `EmptyState`, `Loading`), strukturę (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) i tabele (`DataTable`, `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`). Adapter importuje komponent zestawu według podścieżki i odwzorowuje na niego starsze rekwizyty —, na przykład `Button variant="primary"` to przycisk zestawu `default` (`--ci-button-primary-*`: odwrotna powierzchnia w świetle, akcent z atramentem `--ci-color-accent-foreground` w ciemności), `danger` to `destructive`, a `warning` to `outline` plus rozszerzenie `.ci-button--warning`. Reguły `.ci-button--warning` i `.ci-badge[data-tone]` znajdujące się na końcu `globals.css` (`@layer components`) są rozszerzeniami OmniRoute znajdującymi się na wierzchu klas zestawu. `tests/unit/ui/adapters/*.test.tsx` pin każdego adaptera.
-- **Powłoka.** `src/app/(dashboard)/layout.tsx` renderuje `DashboardLayout`, co renderuje `src/shared/components/layouts/DashboardShell.tsx`: zestaw `SidebarProvider` / `Sidebar` / `SidebarInset` (`packages/ui-kit/src/sidebar.tsx`), z logiką nawigacji OmniRoute w `src/shared/components/Sidebar.tsx`. Link „przeskocz do treści” do `#main-content` jest pierwszym elementem, na którym można ustawić fokus. `src/shared/components/Header.tsx` zawiera zestaw `SidebarTrigger` (jedyny przełącznik paska bocznego powłoki), Keak `ProductSwitcher` i narzędzie do otwierania palet poleceń; pokazuje tytuł trasy tylko wtedy, gdy w `#main-content` nie jest zamontowany żaden zestaw `PageHeader` (`.ci-page-header`), więc strona z własnym `PageHeader` ma pojedynczy `h1`. `src/shared/components/CommandPalette.tsx` to zestaw `Dialog`.
-- **Ikony.** `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) przekształca nazwę (słownictwo symboli materialnych używane na ekranach) poprzez `ICON_MAP` (`src/shared/constants/iconMap.ts`) na glif Lucide. Czcionka i pakiet Material Symbols zniknęły: brak nazwy na mapie renderuje neutralny glif zastępczy (`data-icon-missing="true"`) i rejestruje ostrzeżenie konsoli poza produkcją. `npm run gen:icon-map` wypisuje używane nazwy, których brakuje na mapie (`tests/unit/icon-map-coverage.test.ts` kończy się niepowodzeniem w przypadku dowolnej nazwy bez ikony Lucide; `tests/unit/icon-map-object-values.test.ts` obejmuje nazwy przechowywane w obiektach wyszukiwania); `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` przepisuje dosłowne zakresy `<span className="material-symbols-outlined">` na `<Icon>`.
-- **Marka.** `src/shared/components/OmniRouteLogo.tsx` otacza zestaw: domyślny eksport `OmniRouteLogo` renderuje `ProductIcon product="omniroute" variant="glyph"` (wbudowane SVG, `basePath` -safe), a `OmniRouteLockup` renderuje `ProductLockup product="omniroute"` (dostępna nazwa „Keak OmniRoute”) lub, w przypadku operatorów z białą etykietą, własne `name`/`logoSrc`. Miejsca docelowe zmiany produktu są zapisane w `src/shared/constants/keakProducts.ts` (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). Samodzielne ekrany — `src/app/login/page.tsx`, `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`, `src/app/offline/page.tsx`, `src/app/not-found.tsx` i `src/shared/components/ErrorPageScaffold.tsx` — pokazują zawieszenie; `tests/unit/brand-pages-static.test.ts` go strzeże.
+- **Kit.** `packages/ui-kit/src` jest kopią upstreamowego `src/` bajt po bajcie z commitu przypiętego w
+  `packages/ui-kit/UPSTREAM.md` (który zawiera również informacje o autoryzacji licencji); `PATCHES.md` zawiera listę
+  lokalnych poprawek (brak). Jest używany jako źródło, bez kompilacji: `next.config.mjs` transpilu­je go, a
+  `tsconfig.json` mapuje `@omniroute/ui-kit` → `packages/ui-kit/src` oraz `@omniroute/ui-kit/*` →
+  `packages/ui-kit/src/*` (`vitest.config.ts` i `vitest.mcp.config.ts` zawierają ten sam alias). Importuj
+  komponent zestawu przez jego podścieżkę (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…), nigdy
+  przez barrel `@omniroute/ui-kit`: barrel dołącza każdy komponent (w tym date picker) do każdego importującego.
+  Arkusz stylów zestawu jest dołączany przez `src/app/globals.css`
+  (`@import "../../packages/ui-kit/src/ci-styles.css"`, kompletny arkusz: podstawowy `ci-ui.css` oraz każda rodzina
+  wzorców).
+- **Tokeny.** `packages/ui-kit/src/ci-tokens.css` deklaruje tokeny `--ci-*`; `src/app/globals.css`
+  mapuje je na starsze nazwy OmniRoute (`--color-*`, `--radius-*`, `--font-sans`/`--font-mono`,
+  `--table-*`, `--orch-status-*`, `--color-fd-*`), dzięki czemu istniejące odwołania `var(--color-*)` i
+  narzędzia Tailwind nadal działają. Nowy kod korzysta z narzędzi Tailwind (`bg-surface`, `text-text-muted`,
+  `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) lub klas zestawu — nigdy z wartości
+  szesnastkowej (`tests/unit/design-kit-bridge.test.ts` wymusza działanie mapowania). `text-primary` rozwiązuje się
+  do `--color-primary-ink` przez `--text-color-primary`, więc tekst podstawowy pozostaje czytelny, natomiast
+  `bg-primary`/`border-primary` zachowują akcentowaną powierzchnię: w Editions jest to zestawowe
+  `--ci-color-accent-active` (głęboka miedź `#99562f` w jasnym motywie, miedziany akcent w ciemnym); w Classic
+  jest to lime-800 w jasnym motywie i akcent limonkowy w ciemnym. Serie wykresów używają
+  `--color-chart-1` … `--color-chart-8`, z których każda ma bezpieczny dla tekstu odpowiednik
+  `--color-chart-N-ink` oraz nieprzezroczysty odcień kafelka `--color-chart-N-subtle`, przypisane w kolejności
+  serii zestawu (`ciChartSeriesOrder`).
+- **Motywy.** `<html className="ci-theme">` (`src/app/layout.tsx`) włącza dokument do motywu zestawu.
+  Preferencja to `light`, `dark` lub `system` (`THEME_CONFIG.defaultTheme = "system"` w
+  `src/shared/constants/appConfig.ts`; `system` podąża za `prefers-color-scheme`). `applyTheme()` w
+  `src/store/themeStore.ts` (odwzorowana przez `THEME_BOOT_SCRIPT`, umieszczony bezpośrednio w
+  `src/app/layout.tsx`, który uruchamia się przed hydracją) ustawia `data-theme="dark"|"light"` i jednocześnie
+  przełącza klasę `.dark` na `<html>`. Zestawowy ciemny zestaw tokenów jest uzależniony od
+  `data-theme="dark"` (`packages/ui-kit/src/ci-tokens.css`); własne ciemne nadpisania OmniRoute (blok `.dark` w
+  `globals.css`) oraz starsze narzędzia Tailwind `dark:` są uzależnione od klasy `.dark`. Nie ma gotowych presetów
+  kolorów akcentu: akcent zawsze pochodzi z zestawu, a utrwalony preset ze starszej wersji jest odrzucany podczas
+  ładowania store.
+- **Palety.** Dwie, obie z zestawu (`src/shared/constants/appearancePalette.ts`): `editions`, domyślna, oraz
+  `classic`. Editions to atrybut zestawu `data-ci-appearance="editions"` na `<html>`, który `ci-editions.css`
+  (importowany przez `ci-ui.css`) łączy z `data-theme`; Classic oznacza brak tego atrybutu. Główny layout
+  renderuje ten atrybut po stronie serwera, więc odwiedzający bez zapisanych ustawień (lub bez JS) otrzymuje
+  Editions na każdej powierzchni — dashboardzie, stronie logowania, `/status`, stronach błędów, `/docs` i w PWA.
+  Wybór jest utrwalany obok motywu w tym samym store `theme` (`palette`, `setPalette()`, `applyPalette()` w
+  `src/store/themeStore.ts`) i stosowany przed narysowaniem strony przez `THEME_BOOT_SCRIPT`
+  (`src/shared/utils/themeBootScript.ts`, umieszczony bezpośrednio w `<head>` layoutu), który usuwa atrybut
+  tylko wtedy, gdy zapisana paleta to `"classic"`; `src/app/global-error.tsx`, znajdujący się poza głównym
+  layoutem, stosuje ją z tego samego store. Nie umieszczaj `data-ci-appearance` na żadnym innym elemencie: zestaw
+  dopasowuje go za pomocą `html:root:has([data-ci-appearance="editions"])`, więc jeden element potomny przełączy
+  cały dokument. Wariant Editions `data-ci-editions-variant="landing"` jest przeznaczony dla stron marketingowych,
+  a nie dashboardu. Interfejs przeglądarki: serwer renderuje domyślne ustawienie, Editions, w
+  `viewport.themeColor` (po jednym znaczniku dla każdego `prefers-color-scheme`) oraz w manifeście —
+  `PWA_THEME_COLORS` w `src/shared/constants/pwaThemeColors.ts`, jedyna kopia lustrzana Editions
+  `--ci-color-background` (`#f3f1e9` / `#11120f`), przypięta do `ci-editions.css` przez
+  `tests/unit/pwa-theme-colors.test.ts`. Aktywny `<meta name="theme-color">` podąża następnie za zapisaną paletą
+  i trybem: `THEME_BOOT_SCRIPT` przepisuje znaczniki przed narysowaniem strony, a akcje store motywu robią to przy
+  każdej zmianie (`resolveThemeColor()` / `applyThemeColor()` w `src/shared/utils/themeColorMeta.ts`, z
+  `CLASSIC_PAGE_BACKGROUND` odczytywanym z `ciTokens` zestawu). Jawnie ustawiony motyw jasny/ciemny ustawia każdy
+  znacznik na ten tryb; `system` zachowuje jeden kolor dla każdego schematu. Manifest pozostaje w Editions:
+  jest pobierany raz podczas instalacji, bez uwzględniania preferencji. Monaco odczytuje swoje kolory z sondy
+  (`monacoKitTheme.ts`); w Editions odczyt sondy przełącza główny `data-theme` na jeden synchroniczny przebieg,
+  ponieważ zestaw rozwiązuje jasny/ciemny wariant Editions na podstawie elementu głównego.
+- **Komponenty (adaptery).** `src/shared/components/index.tsx` zachowuje API komponentów OmniRoute (te same
+  nazwy, eksporty domyślne i propsy), a prymitywy za nim są adapterami zestawu: formularze (`Button`, `Input`,
+  `Textarea`, `Checkbox`, `Select`, `Toggle`, `Badge`, `Card`), nakładki i informacje zwrotne
+  (`Modal`/`ConfirmModal`, `Tooltip`/`InfoTooltip`, `NotificationToast`, `EmptyState`, `Loading`), struktura
+  (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) oraz tabele
+  (`DataTable`, `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`). Adapter importuje komponent zestawu
+  przez podścieżkę i mapuje na niego starsze propsy — na przykład `Button variant="primary"` jest przyciskiem
+  zestawu `default` (`--ci-button-primary-*`: odwrotna powierzchnia w jasnym motywie, akcent z kolorem tekstu
+  `--ci-color-accent-foreground` w ciemnym), `danger` to `destructive`, a `warning` to `outline` wraz z
+  rozszerzeniem `.ci-button--warning`. Reguły `.ci-button--warning` i `.ci-badge[data-tone]` na końcu
+  `globals.css` (`@layer components`) są rozszerzeniami OmniRoute opartymi na klasach zestawu.
+  `tests/unit/ui/adapters/*.test.tsx` przypinają każdy adapter.
+- **Powłoka.** `src/app/(dashboard)/layout.tsx` renderuje `DashboardLayout`, który renderuje
+  `src/shared/components/layouts/DashboardShell.tsx`: elementy `SidebarProvider` / `Sidebar` /
+  `SidebarInset` z zestawu (`packages/ui-kit/src/sidebar.tsx`) wraz z logiką nawigacji OmniRoute w
+  `src/shared/components/Sidebar.tsx`. Link „przejdź do treści” prowadzący do `#main-content` jest pierwszym elementem, na którym można ustawić fokus. `src/shared/components/Header.tsx` zawiera `SidebarTrigger` z zestawu (jedyny przełącznik paska bocznego w powłoce), `ProductSwitcher` Keak oraz przycisk otwierający paletę poleceń; tytuł trasy jest wyświetlany tylko wtedy, gdy wewnątrz `#main-content` nie zamontowano elementu `PageHeader` z zestawu (`.ci-page-header`), więc strona z własnym `PageHeader` ma pojedynczy `h1`. `src/shared/components/CommandPalette.tsx` to element `Dialog` z zestawu.
+- **Ikony.** `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) rozpoznaje nazwę (słownictwo Material Symbols używane przez ekrany) za pośrednictwem `ICON_MAP` (`src/shared/constants/iconMap.ts`) i mapuje ją na glif Lucide. Czcionka i pakiet Material Symbols zostały usunięte: nazwa nieobecna na mapie renderuje neutralny glif zastępczy (`data-icon-missing="true"`) i rejestruje ostrzeżenie w konsoli poza środowiskiem produkcyjnym. `npm run gen:icon-map` wypisuje używane nazwy, których brakuje na mapie
+  (`tests/unit/icon-map-coverage.test.ts` kończy się niepowodzeniem dla każdej nazwy bez ikony Lucide;
+  `tests/unit/icon-map-object-values.test.ts` obejmuje nazwy przechowywane w obiektach wyszukiwania);
+  `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` przepisuje literały
+  `<span className="material-symbols-outlined">` na `<Icon>`.
+- **Marka.** `src/shared/components/OmniRouteLogo.tsx` opakowuje zestaw: eksport domyślny `OmniRouteLogo`
+  renderuje `ProductIcon product="omniroute" variant="glyph"` (wbudowany kod SVG, bezpieczny dla `basePath`) i
+  `OmniRouteLockup` renderuje `ProductLockup product="omniroute"` (dostępna nazwa „Keak OmniRoute”) lub, w przypadku operatorów white-label, ich własne `name`/`logoSrc`. Miejsca docelowe przełącznika produktów znajdują się w
+  `src/shared/constants/keakProducts.ts` (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). Samodzielne
+  ekrany — `src/app/login/page.tsx`, `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`,
+  `src/app/offline/page.tsx`, `src/app/not-found.tsx` oraz `src/shared/components/ErrorPageScaffold.tsx`
+  — wyświetlają lockup; test `tests/unit/brand-pages-static.test.ts` pilnuje jego obecności.
 
 ## 2. Zasady
 
-1. Tokeny, nigdy literały. Wyjątki zachowane celowo: zawsze ciemny terminal konsolowy i `STATUS_HEX` (`src/shared/constants/statusColors.ts`), szesnastkowe lustro palety stanu zestawu dla osób wywołujących, które potrzebują dosłownego szesnastkowego. Palety kategoryczne nie są już wyjątkiem: opierają się na pięciu żetonach wykresów zestawu (`--color-chart-1..5`) poprzez `src/shared/utils/categoricalPalette.ts` oraz, w przypadku strategii routingu, `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`; krawędzie ReactFlow i płótno orkiestracji odczytują zmienne `--orch-status-*` uwzględniające motyw (`src/shared/components/flow/edgeStyles.ts`).
-2. Nigdy nie łataj `packages/ui-kit/src` ręcznie: synchronizuj z `scripts/dev/sync-ui-kit.sh <commit>`; bramka przed zatwierdzeniem `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) kończy się niepowodzeniem na dowolnym bajcie, który różni się od przypiętego zatwierdzenia w górę (przeskakuje z ostrzeżeniem, gdy nie ma klonu w górę, `UI_KIT_CLONE` lub `_references/cheaper-inference-ui-kit`). Jeśli w zestawie czegoś brakuje, obejdź to w adapterze lub na ekranie i poproś o to wcześniej.
-3. Domyślnymi ustawieniami tekstu zestawu jest angielski (`label = "Loading"`, `loadingLabel = "Loading table"`…) — przesyłaj przetłumaczone ciągi znaków z `useTranslations(...)` za każdym razem, gdy komponent zestawu renderuje tekst.
-4. Narzędzia Tailwind wygrywają z klasami komponentów zestawu (zestaw deklaruje `@layer theme, base, components, utilities` i jego zasady żyją w `components`) — używaj narzędzi do ustalania odstępów i układu, a nie do ponownego kolorowania komponentów zestawu.
-5. Nagłówki: `.ci-heading` dla tytułów stron i sekcji; `.ci-dashboard-display` tylko dla dużego, rzadkiego tekstu wyświetlanego, takiego jak kod stanu strony błędu. Obaj korzystają ze Szwajcarii.
-6. `tests/unit/dashboard-kit-sweep.test.ts` chroni przyjęcie zestawu: brak zakresu ligatury materiału pod `src/app` lub `src/shared/components`; w drzewie panelu kontrolnego (`src/app/(dashboard)` i `src/shared/components`) żadnych surowych `<select>`, `<textarea>` lub `<table>` ani ręcznie walcowanych `role="dialog"` poza wymienionymi wyjątkami (natywna gałąź adaptera `Select`, `RequestLoggerDetail`); każdy surowy `<button>` lub `<input>` wymaga komentarza zawierającego `kit-exception:` (wraz z przyczyną) kończącego się najwyżej 3 linie powyżej; odcienie palety i warianty `dark:` tylko w plikach list testowych.
-7. Sprawdź oba motywy i rzutnię 390 pikseli przed PR (zrzuty ekranu); `tests/e2e/a11y.spec.ts` biegnie toporem.
+1. Tokeny, nigdy literały. Celowo zachowane wyjątki: zawsze ciemny terminal konsoli oraz
+   `STATUS_HEX` (`src/shared/constants/statusColors.ts`), lustrzane odbicie palety statusów zestawu
+   w postaci rozstrzygniętych wartości szesnastkowych dla wywołujących, którzy potrzebują literału
+   szesnastkowego. Palety kategoryczne nie są już wyjątkiem: korzystają z ośmiu tokenów wykresów
+   zestawu (`--color-chart-1..8`, a także `-ink`/`-subtle`), w kolejności serii zestawu, za pośrednictwem
+   `src/shared/utils/categoricalPalette.ts` oraz, w przypadku strategii routingu,
+   `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`; krawędzie ReactFlow i obszar roboczy
+   orkiestracji odczytują uwzględniające motyw zmienne `--orch-status-*`
+   (`src/shared/components/flow/edgeStyles.ts`).
+2. Nigdy nie modyfikuj ręcznie `packages/ui-kit/src`: synchronizuj za pomocą
+   `scripts/dev/sync-ui-kit.sh <commit>`; kontrola przed zatwierdzeniem
+   `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) kończy się niepowodzeniem przy każdym bajcie,
+   który różni się od przypiętego zatwierdzenia upstream (pomija kontrolę z ostrzeżeniem, gdy brakuje
+   klona upstream, `UI_KIT_CLONE` lub `_references/cheaper-inference-ui-kit`). Gdy zestaw czegoś nie
+   zawiera, obejdź ten brak w adapterze lub na ekranie i poproś upstream o dodanie tej funkcji.
+3. Domyślne teksty zestawu są w języku angielskim (`label = "Loading"`, `loadingLabel = "Loading table"`…) —
+   przekazuj przetłumaczone ciągi z `useTranslations(...)` zawsze, gdy komponent zestawu renderuje tekst.
+4. Narzędzia Tailwind mają pierwszeństwo przed klasami komponentów zestawu (zestaw deklaruje
+   `@layer theme, base, components, utilities`, a jego reguły znajdują się w `components`) — używaj
+   narzędzi do odstępów i układu, a nie do zmiany kolorów komponentów zestawu.
+5. Nagłówki: `.ci-heading` dla tytułów stron i sekcji; `.ci-dashboard-display` wyłącznie dla dużego,
+   rzadkiego tekstu typu display, takiego jak kod statusu strony błędu. Oba używają kroju Switzer.
+6. `tests/unit/dashboard-kit-sweep.test.ts` pilnuje użycia zestawu: brak elementu span z ligaturą Material
+   w `src/app` lub `src/shared/components`; w drzewie dashboardu (`src/app/(dashboard)` i
+   `src/shared/components`) brak surowych `<select>`, `<textarea>` lub `<table>` oraz brak ręcznie
+   utworzonego `role="dialog"` poza wymienionymi wyjątkami (natywna gałąź adaptera `Select`,
+   `RequestLoggerDetail`); każdy surowy `<button>` lub `<input>` w tym obszarze wymaga komentarza
+   zawierającego `kit-exception:` (z uzasadnieniem), kończącego się najwyżej 3 wiersze przed nim; barwy
+   palety i warianty `dark:` są dozwolone wyłącznie w plikach wymienionych przez test.
+7. Przed PR-em zweryfikuj oba motywy oraz widok w oknie o szerokości 390 px (zrzuty ekranu);
+   `tests/e2e/a11y.spec.ts` uruchamia axe.
 
 ## 3. Dodawanie ekranu
 

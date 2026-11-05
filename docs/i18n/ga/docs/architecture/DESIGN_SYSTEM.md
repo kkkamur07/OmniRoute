@@ -18,109 +18,142 @@
 
 ## 1. Cá bhfuil rudaí suite
 
-- **Trealamh.** Is cóip bheart ar bheart de `src/` réamhtheachtach é `packages/ui-kit/src` ag an gcoimit atá pionnáilte in
-  `packages/ui-kit/UPSTREAM.md` (ina dtaifeadtar údarú an cheadúnais freisin); liostaítear paistí áitiúla in `PATCHES.md`
-  (níl aon cheann ann). Úsáidtear mar fhoinse é, gan tógáil: tras-phearsálann `next.config.mjs` é, agus
-  mapálann `tsconfig.json` `@omniroute/ui-kit` → `packages/ui-kit/src` agus `@omniroute/ui-kit/*` →
-  `packages/ui-kit/src/*` (tá an ailias céanna in `vitest.config.ts` agus `vitest.mcp.config.ts`). Iompórtáil
-  comhpháirt trealaimh trína fochonair (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…), agus ná
-  déan é riamh tríd an mbairille `@omniroute/ui-kit`: tarraingíonn an bairille gach comhpháirt (an roghnóir dáta san
-  áireamh) isteach i ngach iompórtálaí. Tagann stílbhileog an trealaimh isteach trí `src/app/globals.css`
-  (`@import "../../packages/ui-kit/src/ci-styles.css"`, an stílbhileog iomlán: an croí-`ci-ui.css` móide gach teaghlach patrún).
-- **Comharthaí.** Fógraíonn `packages/ui-kit/src/ci-tokens.css` na comharthaí `--ci-*`; nascann `src/app/globals.css`
-  iad le hainmneacha oidhreachta OmniRoute (`--color-*`, `--radius-*`, `--font-sans`/`--font-mono`,
-  `--table-*`, `--orch-status-*`, `--color-fd-*`), ionas go leanann na léamha `var(--color-*)` atá ann agus
-  fóntais Tailwind ag obair. Úsáideann cód nua fóntais Tailwind (`bg-surface`, `text-text-muted`,
-  `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) nó aicmí an trealaimh — ní úsáidtear luach heicsidheachúlach
-  riamh (`tests/unit/design-kit-bridge.test.ts` a fhorfheidhmíonn an nasc). Réitíonn `text-primary` go
-  `--color-primary-ink` trí `--text-color-primary`, ionas go bhfanann an téacs príomhúil inléite agus go
-  gcoinníonn `bg-primary`/`border-primary` an dromchla béime: faoi Editions is é
-  `--ci-color-accent-active` an trealaimh é (an copar domhain `#99562f` sa mhód geal, an bhéim chopair sa mhód dorcha); faoi Classic,
-  lime-800 sa mhód geal agus an bhéim líoma sa mhód dorcha. Úsáideann sraitheanna cairte
-  `--color-chart-1` … `--color-chart-5`.
-- **Téamaí.** Cuireann `<html className="ci-theme">` (`src/app/layout.tsx`) an cháipéis faoi théama an trealaimh.
-  Is é `light`, `dark` nó `system` an tsainrogha (`THEME_CONFIG.defaultTheme = "system"` in
-  `src/shared/constants/appConfig.ts`; leanann `system` `prefers-color-scheme`). Socraíonn `applyTheme()` in
-  `src/store/themeStore.ts` (arna scáthánú ag `THEME_BOOT_SCRIPT`, atá inlíneáilte in `src/app/layout.tsx` agus a ritheann
-  roimh hiodráitiú) `data-theme="dark"|"light"` agus scoránaíonn sé an aicme `.dark` ar `<html>` ag an am céanna.
-  Tá tacar comharthaí dorcha an trealaimh eochraithe ar `data-theme="dark"` (`packages/ui-kit/src/ci-tokens.css`);
-  tá sáruithe dorcha OmniRoute féin (an bloc `.dark` in `globals.css`) agus na fóntais oidhreachta Tailwind `dark:`
-  eochraithe ar an aicme `.dark`. Níl aon réamhshocruithe datha béime ann: tagann an bhéim ón trealamh i gcónaí,
-  agus caitear réamhshocrú marthanach ó leagan níos sine nuair a lódálann an stór.
-- **Pailéid.** Tá dhá cheann ann, iad araon ón trealamh (`src/shared/constants/appearancePalette.ts`): `editions`, an
-  réamhshocrú, agus `classic`. Is é Editions aitreabúid `data-ci-appearance="editions"` an trealaimh ar `<html>`, a
-  chomhcheanglaíonn `ci-editions.css` (arna iompórtáil ag `ci-ui.css`) le `data-theme`; is é Classic easpa na
-  hatreabúide. Rindreálann leagan amach fréimhe an fhreastalaí an aitreabúid, mar sin faigheann cuairteoir nach bhfuil aon rud
-  stóráilte aige (nó nach bhfuil JS aige) Editions ar gach dromchla — an deais, logáil isteach, `/status`, leathanaigh earráide,
-  `/docs` agus an PWA. Maireann an rogha taobh leis an téama sa stór `theme` céanna (`palette`, `setPalette()`,
-  `applyPalette()` in `src/store/themeStore.ts`) agus cuireann `THEME_BOOT_SCRIPT` i bhfeidhm í roimh phéinteáil
-  (`src/shared/utils/themeBootScript.ts`, atá inlíneáilte i `<head>` an leagain amach), rud nach mbaineann an aitreabúid
-  ach amháin nuair is é `"classic"` an pailéad stóráilte; cuireann `src/app/global-error.tsx`, atá lasmuigh den leagan amach
-  fréimhe, i bhfeidhm í ón stór céanna. Ná cuir `data-ci-appearance` ar aon eilimint eile: meaitseálann an trealamh é le
-  `html:root:has([data-ci-appearance="editions"])`, mar sin d'athródh sliocht amháin an cháipéis iomlán.
-  Tá an mhalairt Editions `data-ci-editions-variant="landing"` le haghaidh leathanaigh mhargaíochta, ní le haghaidh na deaise.
-  Cróim an bhrabhsálaí: rindreálann an freastalaí an réamhshocrú, Editions, in `viewport.themeColor` (clib amháin in aghaidh
-  `prefers-color-scheme`) agus sa léiriúchán gréasáin — `PWA_THEME_COLORS` in
-  `src/shared/constants/pwaThemeColors.ts`, an t-aon scáthán amháin de `--ci-color-background` Editions
-  (`#f3f1e9` / `#11120f`), atá pionnáilte le `ci-editions.css` ag `tests/unit/pwa-theme-colors.test.ts`. Leanann an
-  `<meta name="theme-color">` beo an pailéad agus an mód stóráilte ansin: athscríobhann `THEME_BOOT_SCRIPT` na
-  clibeanna roimh phéinteáil agus déanann gníomhartha an stóir téama é ar gach athrú (`resolveThemeColor()` /
-  `applyThemeColor()` in `src/shared/utils/themeColorMeta.ts`, agus `CLASSIC_PAGE_BACKGROUND` á léamh ó
-  `ciTokens` an trealaimh). Socraíonn téama follasach geal/dorcha gach clib don mhód sin; coinníonn `system` dath amháin
-  in aghaidh na scéime. Fanann an léiriúchán mar Editions: faightear uair amháin é in aghaidh gach suiteála, gan an
-  tsainrogha. Léann Monaco a chuid dathanna ó thaiscéalaí (`monacoKitTheme.ts`);
-  faoi Editions, athraíonn léamh an taiscéalaí `data-theme` na fréimhe le haghaidh pas sioncrónach amháin, toisc go
-  réitíonn an trealamh Editions geal/dorcha ón bhfréamh.
-- **Comhpháirteanna (cuibheoirí).** Coinníonn `src/shared/components/index.tsx` API comhpháirte OmniRoute (na hainmneacha,
-  na heaspórtálacha réamhshocraithe agus na hairíonna céanna), agus is cuibheoirí thar an trealamh iad na bunphrimitíbí taobh thiar de:
-  foirmeacha (`Button`, `Input`, `Textarea`, `Checkbox`, `Select`, `Toggle`, `Badge`, `Card`), forleaganacha agus aiseolas
-  (`Modal`/`ConfirmModal`, `Tooltip`/`InfoTooltip`, `NotificationToast`, `EmptyState`, `Loading`),
-  struchtúr (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) agus táblaí
-  (`DataTable`, `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`). Iompórtálann cuibheoir comhpháirt an trealaimh
-  trí fhochonair agus mapálann sé na hairíonna oidhreachta uirthi — mar shampla, is é `Button variant="primary"` an
-  cnaipe `default` sa trealamh (`--ci-button-primary-*`: an dromchla inbhéartach sa mhód geal, an bhéim lena dúch
-  `--ci-color-accent-foreground` sa mhód dorcha), is é `destructive` atá i `danger`, agus is é `outline` móide
-  an iarmhír `.ci-button--warning` atá i `warning`. Is iarmhíreanna OmniRoute iad na rialacha `.ci-button--warning` agus
-  `.ci-badge[data-tone]` ag deireadh `globals.css` (`@layer components`) os cionn aicmí an trealaimh.
-  Pionnálann `tests/unit/ui/adapters/*.test.tsx` gach cuibheoir.
-- **Blaosc.** Rindreálann `src/app/(dashboard)/layout.tsx` `DashboardLayout`, a rindreálann
+- **Trealamh.** Is cóip beart ar bheart de `src/` ón bhfoinse réamhtheachtach ag an tiomantas atá sonraithe i
+  `packages/ui-kit/UPSTREAM.md` é `packages/ui-kit/src` (taifeadtar údarú an cheadúnais ansin freisin); liostaíonn
+  `PATCHES.md` na paistí áitiúla (níl aon cheann ann). Úsáidtear é mar fhoinse, gan tógáil: déanann
+  `next.config.mjs` é a thrasthiomsú, agus mapálann `tsconfig.json` `@omniroute/ui-kit` →
+  `packages/ui-kit/src` agus `@omniroute/ui-kit/*` → `packages/ui-kit/src/*` (tá an ailias céanna ag
+  `vitest.config.ts` agus `vitest.mcp.config.ts`). Iompórtáil comhpháirt trealaimh trína fhochonaire
+  (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…), ná húsáid bairille
+  `@omniroute/ui-kit`: tarraingíonn an bairille gach comhpháirt (an roghnóir dátaí san áireamh) isteach i ngach
+  iompórtálaí. Tagann stílbhileog an trealaimh isteach trí `src/app/globals.css`
+  (`@import "../../packages/ui-kit/src/ci-styles.css"`, an bhileog iomlán: an croí `ci-ui.css` móide gach
+  teaghlach patrún).
+- **Comharthaí.** Dearbhaíonn `packages/ui-kit/src/ci-tokens.css` na comharthaí `--ci-*`; nascann
+  `src/app/globals.css` iad leis na seanainmneacha OmniRoute (`--color-*`, `--radius-*`,
+  `--font-sans`/`--font-mono`, `--table-*`, `--orch-status-*`, `--color-fd-*`), ionas go leanfaidh léamha
+  `var(--color-*)` atá ann cheana agus fóntais Tailwind ag obair. Úsáideann cód nua na fóntais Tailwind
+  (`bg-surface`, `text-text-muted`, `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) nó
+  aicmí an trealaimh — ná húsáid luach heicsidheachúlach riamh
+  (`tests/unit/design-kit-bridge.test.ts` a chuireann an droichead i bhfeidhm). Réitíonn `text-primary` go
+  `--color-primary-ink` trí `--text-color-primary`, mar sin fanann príomhthéacs inléite agus coinníonn
+  `bg-primary`/`border-primary` an dromchla accent: faoi Editions is é
+  `--ci-color-accent-active` an trealaimh é (an copar domhain `#99562f` i mód éadrom, an accent copair i mód
+  dorcha); faoi Classic, lime-800 i mód éadrom agus an accent aoil i mód dorcha. Úsáideann sraitheanna cairte
+  `--color-chart-1` … `--color-chart-8`, agus tá `--color-chart-N-ink` sábháilte ó thaobh téacs de agus
+  dath sliseáin teimhneach `--color-chart-N-subtle` ag gach ceann acu, san ord sraitheanna atá san trealamh
+  (`ciChartSeriesOrder`).
+- **Téamaí.** Roghnaíonn `<html className="ci-theme">` (`src/app/layout.tsx`) téama an trealaimh don doiciméad.
+  Is é `light`, `dark` nó `system` an rogha (`THEME_CONFIG.defaultTheme = "system"` in
+  `src/shared/constants/appConfig.ts`; leanann `system` `prefers-color-scheme`). Socraíonn
+  `applyTheme()` in `src/store/themeStore.ts` (agus déanann `THEME_BOOT_SCRIPT` scáthánú air, é inlíneáilte i
+  `src/app/layout.tsx`, agus á rith roimh hiodráitiú) `data-theme="dark"|"light"` agus scoránaíonn sé an aicme
+  `.dark` ar `<html>` le chéile. Tá tacar comharthaí dorcha an trealaimh bunaithe ar
+  `data-theme="dark"` (`packages/ui-kit/src/ci-tokens.css`); tá sáruithe dorcha OmniRoute féin (an bloc
+  `.dark` in `globals.css`) agus fóntais oidhreachta Tailwind `dark:` bunaithe ar an aicme `.dark`. Níl aon
+  réamhshocruithe datha accent ann: tagann an accent i gcónaí ón trealamh, agus scaoiltear réamhshocrú
+  marthanach ó thógáil níos sine nuair a lódáiltear an stór.
+- **Pailéid.** Dhá cheann atá ann, an dá cheann ón trealamh (`src/shared/constants/appearancePalette.ts`):
+  `editions`, an réamhshocrú, agus `classic`. Is é Editions aitreabúid `data-ci-appearance="editions"` an
+  trealaimh ar `<html>`, a chomhcheanglaíonn `ci-editions.css` (a iompórtálann `ci-ui.css`) le `data-theme`;
+  is é easpa na ha itreabúide Classic. Rindreálann leagan amach na fréimhe an aitreabúid ar an bhfreastalaí,
+  mar sin faigheann cuairteoir nach bhfuil aon rud stóráilte aige (nó nach bhfuil JS aige) Editions ar gach
+  dromchla — an painéal, logáil isteach, `/status`, leathanaigh earráide, `/docs` agus an PWA. Stóráiltear an
+  rogha taobh leis an téama sa stór `theme` céanna (`palette`, `setPalette()`, `applyPalette()` in
+  `src/store/themeStore.ts`) agus cuirtear i bhfeidhm í roimh phéinteáil ag `THEME_BOOT_SCRIPT`
+  (`src/shared/utils/themeBootScript.ts`, inlíneáilte i `<head>` an leagain amach), a bhaineann an aitreabúid
+  amach nuair is `"classic"` an pailéad stóráilte amháin; cuireann `src/app/global-error.tsx`, atá lasmuigh de
+  leagan amach na fréimhe, i bhfeidhm í ón stór céanna. Ná cuir `data-ci-appearance` ar aon eilimint eile:
+  meaitseálann an trealamh í le `html:root:has([data-ci-appearance="editions"])`, mar sin d’athródh sliocht
+  amháin an doiciméad iomlán. Is le haghaidh leathanaigh mhargaíochta, ní don phainéal, an leagan
+  Editions `data-ci-editions-variant="landing"`. Barra an bhrabhsálaí: rindreálann an freastalaí an
+  réamhshocrú, Editions, in `viewport.themeColor` (clib amháin in aghaidh gach
+  `prefers-color-scheme`) agus i bhforléiriú an ghréasáin — `PWA_THEME_COLORS` in
+  `src/shared/constants/pwaThemeColors.ts`, an t-aon scáthán de Editions `--ci-color-background`
+  (`#f3f1e9` / `#11120f`), pionnáilte le `ci-editions.css` ag
+  `tests/unit/pwa-theme-colors.test.ts`. Ansin leanann an beo
+  `<meta name="theme-color">` an pailéad agus an mód stóráilte: athscríobhann `THEME_BOOT_SCRIPT` na clibeanna
+  roimh phéinteáil agus déanann gníomhartha stór na dtéamaí amhlaidh ag gach athrú
+  (`resolveThemeColor()` / `applyThemeColor()` in `src/shared/utils/themeColorMeta.ts`, le
+  `CLASSIC_PAGE_BACKGROUND` léite ó `ciTokens` an trealaimh). Socraíonn téama éadrom/dorcha sainráite gach
+  clib don mhód sin; coinníonn `system` dath amháin in aghaidh na scéime. Fanann an forléiriú mar Editions:
+  faightear é uair amháin in aghaidh na suiteála, gan an rogha san áireamh. Léann Monaco a dhathanna ó
+  thóireadóir (`monacoKitTheme.ts`); faoi Editions smeachann léamh an tóireadóra `data-theme` na fréimhe ar
+  feadh pas sioncrónach amháin, toisc go réitíonn an trealamh Editions éadrom/dorcha ón bhfréamh.
+- **Comhpháirteanna (oiriúnóirí).** Coinníonn `src/shared/components/index.tsx` API chomhpháirteanna
+  OmniRoute (na hainmneacha, na honnmhairí réamhshocraithe agus na hairíonna céanna), agus is oiriúnóirí thar
+  an trealamh iad na primitiveanna taobh thiar de: foirmeacha (`Button`, `Input`, `Textarea`, `Checkbox`,
+  `Select`, `Toggle`, `Badge`, `Card`), forleagain agus aiseolas (`Modal`/`ConfirmModal`,
+  `Tooltip`/`InfoTooltip`, `NotificationToast`, `EmptyState`, `Loading`), struchtúr (`Collapsible`,
+  `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) agus táblaí (`DataTable`, `FilterBar`,
+  `ColumnToggle`, `FilterPills`, `PresetSlider`). Iompórtálann oiriúntóir comhpháirt an trealaimh trí
+  fhochonaire agus mapálann sé na hairíonna oidhreachta chuici — mar shampla, is é
+  `Button variant="primary"` an cnaipe `default` den trealamh (`--ci-button-primary-*`: an dromchla
+  inbhéartaithe i mód éadrom, an accent lena dúch `--ci-color-accent-foreground` i mód dorcha), is é
+  `danger` `destructive`, agus is é `warning` `outline` móide an síneadh `.ci-button--warning`. Is
+  síneadh OmniRoute thar aicmí an trealaimh iad na rialacha `.ci-button--warning` agus
+  `.ci-badge[data-tone]` ag deireadh `globals.css` (`@layer components`). Déanann
+  `tests/unit/ui/adapters/*.test.tsx` gach oiriúntóir a phionnáil.
+- **Blaosc.** `src/app/(dashboard)/layout.tsx` rindreálann sé `DashboardLayout`, a rindreálann
   `src/shared/components/layouts/DashboardShell.tsx`: `SidebarProvider` / `Sidebar` /
-  `SidebarInset` an trealaimh (`packages/ui-kit/src/sidebar.tsx`), agus loighic nascleanúna OmniRoute in
-  `src/shared/components/Sidebar.tsx`. Is é nasc “léim chuig an ábhar” chuig `#main-content` an chéad
-  eilimint ar féidir fócas a chur uirthi. Coinníonn `src/shared/components/Header.tsx` `SidebarTrigger` an
-  trealaimh (an t-aon scorán barra taoibh sa bhlaosc), `ProductSwitcher` Keak agus oscailteoir phailéad na
-  n-orduithe; ní thaispeánann sé teideal an bhealaigh ach amháin nuair nach bhfuil `PageHeader` de chuid an
-  trealaimh (`.ci-page-header`) feistithe laistigh de `#main-content`, ionas go mbíonn `h1` amháin ag
-  leathanach a bhfuil a `PageHeader` féin aige. Is `Dialog` de chuid an trealaimh é
+  `SidebarInset` an fheisteáin (`packages/ui-kit/src/sidebar.tsx`), le loighic nascleanúna OmniRoute in
+  `src/shared/components/Sidebar.tsx`. Is é nasc “scipeadh chuig an ábhar” chuig `#main-content` an chéad eilimint
+  ar féidir fócas a chur uirthi. Tá `SidebarTrigger` an fheisteáin (an t-aon scorán barra taoibh sa bhlaosc),
+  `ProductSwitcher` Keak agus oscailteoir an phailléid orduithe in
+  `src/shared/components/Header.tsx`; taispeánann sé teideal an róid ach amháin nuair nach bhfuil
+  `PageHeader` de chuid an fheisteáin (`.ci-page-header`) feistithe taobh istigh de `#main-content`, mar sin
+  bíonn `h1` amháin ag leathanach a bhfuil a `PageHeader` féin aige. Is `Dialog` de chuid an fheisteáin é
   `src/shared/components/CommandPalette.tsx`.
-- **Deilbhíní.** Réitíonn `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) an t-ainm (stór
-  focal Material Symbols a úsáideann na scáileáin) trí `ICON_MAP` (`src/shared/constants/iconMap.ts`) go
-  glife Lucide. Níl cló ná pacáiste Material Symbols ann a thuilleadh: má tá ainm ar iarraidh ón mapa,
-  rindreáiltear glife neodrach ionadchoinneála (`data-icon-missing="true"`) agus logáiltear rabhadh sa chonsól
-  lasmuigh den timpeallacht táirgthe. Priontálann `npm run gen:icon-map` na hainmneacha atá in úsáid agus atá
-  ar iarraidh ón mapa (teipeann ar `tests/unit/icon-map-coverage.test.ts` i gcás aon ainm nach bhfuil deilbhín
-  Lucide aige; cumhdaíonn `tests/unit/icon-map-object-values.test.ts` ainmneacha atá stóráilte in oibiachtaí
-  cuardaigh); athscríobhann `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` réisí litriúla
-  `<span className="material-symbols-outlined">` mar `<Icon>`.
-- **Branda.** Timfhilleann `src/shared/components/OmniRouteLogo.tsx` an trealamh: rindreálann an t-easpórtáil
-  réamhshocraithe `OmniRouteLogo` `ProductIcon product="omniroute" variant="glyph"` (SVG inlíne, sábháilte ó
-  thaobh `basePath` de), agus rindreálann `OmniRouteLockup` `ProductLockup product="omniroute"` (ainm
-  inrochtana “Keak OmniRoute”) nó, i gcás oibreoirí lipéid bháin, a `name`/`logoSrc` féin. Tá cinn scríbe
-  lascthóir an táirge in `src/shared/constants/keakProducts.ts` (`KEAK_PRODUCT_LINKS`,
-  `KEAK_ACTIVE_PRODUCT`). Taispeánann na scáileáin neamhspleácha —
+- **Deilbhíní.** Réitíonn `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) an t-ainm (an
+  stór focal Material Symbols a úsáideann na scáileáin) trí `ICON_MAP`
+  (`src/shared/constants/iconMap.ts`) go glif Lucide. Tá cló agus pacáiste Material Symbols bainte:
+  má bhíonn ainm in easnamh ón léarscáil, rindreáiltear glif neodrach ionadach
+  (`data-icon-missing="true"`) agus logáiltear rabhadh consóil lasmuigh den táirgeadh.
+  Priontálann `npm run gen:icon-map` na hainmneacha atá in úsáid agus atá in easnamh ón léarscáil
+  (`tests/unit/icon-map-coverage.test.ts` teipeann air i gcás aon ainm nach bhfuil deilbhín Lucide aige;
+  clúdaíonn `tests/unit/icon-map-object-values.test.ts` ainmneacha atá stóráilte in oibiachtaí cuardaigh);
+  athscríobhann `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` réisí litriúla
+  `<span className="material-symbols-outlined">` go `<Icon>`.
+- **Branda.** Timfhilleann `src/shared/components/OmniRouteLogo.tsx` an trealamh: rindreálann an t-easpórtáil réamhshocraithe `OmniRouteLogo`
+  `ProductIcon product="omniroute" variant="glyph"` (SVG inlíne, sábháilte ó thaobh `basePath`) agus
+  rindreálann `OmniRouteLockup` `ProductLockup product="omniroute"` (ainm inrochtana “Keak OmniRoute”) nó, i gcás
+  oibreoirí lipéad bháin, a `name`/`logoSrc` féin. Tá cinn scríbe an lascthóra táirgí in
+  `src/shared/constants/keakProducts.ts` (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). Taispeánann na scáileáin neamhspleácha —
   `src/app/login/page.tsx`, `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`,
   `src/app/offline/page.tsx`, `src/app/not-found.tsx` agus `src/shared/components/ErrorPageScaffold.tsx`
-  — an glasáil suas; cosnaíonn `tests/unit/brand-pages-static.test.ts` í.
+  — an lockup; cinntíonn `tests/unit/brand-pages-static.test.ts` go bhfanann sé ann.
 
 ## 2. Rialacha
 
-1. Comharthaí, ní litriúil riamh. Eisceachtaí coinnithe chun críche: an teirminéal consól i gcónaí-dorcha agus `STATUS_HEX` (`src/shared/constants/statusColors.ts`), an scáthán heicsidheachúlach réitithe ar an bpailéad stádais feiste do ghlaoiteoirí a bhfuil heicsidheachúlacht liteartha de dhíth orthu. Ní haon eisceacht iad na pailéid chatagóireacha níos mó: marcálann siad ar chúig chomhartha cairte an trealaimh (`--color-chart-1..5`) trí `src/shared/utils/categoricalPalette.ts` agus, le haghaidh straitéisí ródaithe, `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`; Léann imill ReactFlow agus an chanbhás ceolfhoirneachta na hathróga `--orch-status-*` atá feasach ar an téama (`src/shared/components/flow/edgeStyles.ts`).
-2. Ná paiste `packages/ui-kit/src` de láimh riamh: sioncronaigh le `scripts/dev/sync-ui-kit.sh <commit>`; teipeann ar an ngeata réamh-gheallta `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) ar aon bheart atá éagsúil leis an gceangal pinned in aghaidh an tsrutha (scipeann sé le rabhadh nuair a bhíonn an clón in aghaidh an tsrutha, `UI_KIT_CLONE` nó `_references/cheaper-inference-ui-kit`, as láthair). Nuair a bhíonn rud éigin in easnamh ar an trealamh, oibrigh timpeall air san oiriúntóir nó ar an scáileán agus iarr in aghaidh an tsrutha é.
-3. Is iad na mainneachtainí téacs paitinne ná Béarla (`label = "Loading"`, `loadingLabel = "Loading table"`…) — teaghráin aistrithe ó `useTranslations(...)` aon uair a rindreálann comhpháirt feiste téacs.
-4. Bíonn bua ag fóntais Tailwind ar ranganna comhpháirte an trealaimh (dearbhaíonn an trealamh go bhfuil `@layer theme, base, components, utilities` agus a rialacha beo i `components`) - fóntais a úsáid le haghaidh spásáil agus leagan amach, gan ath-dath a dhéanamh ar chomhpháirteanna feiste.
-5. Ceannteidil: `.ci-heading` do theidil leathanaigh agus rannáin; `.ci-dashboard-display` ach amháin le haghaidh téacs taispeántais mór tanaí, mar shampla an cód stádais earráid-leathanaigh. Úsáideann an bheirt acu Switzer.
-6. gardaí `tests/unit/dashboard-kit-sweep.test.ts` an trealamh a ghlacadh: gan aon Réise ligature ábhar faoi `src/app` nó `src/shared/components`; sa chrann painéal (`src/app/(dashboard)` agus `src/shared/components`) gan aon `<select>` amh , `<textarea>` nó `<table>` agus gan aon `role="dialog"` lámh-rollta lasmuigh de na heisceachtaí liostaithe (brainse dúchais an oiriúntóra `Select`, `RequestLoggerDetail`); gach `<button>` amh nó `<input>` tá gá le trácht ina bhfuil `kit-exception:` (leis an gcúis) a chríochnaíonn ar a mhéad 3 línte os a chionn; hues pailéad agus leagan `dark:` amháin sna comhaid ar na liostaí tástála.
-7. Fíoraigh an dá théama agus an radharc 390 px roimh PR (scáileáin); ritheann `tests/e2e/a11y.spec.ts` tua.
+1. Tóicíní, ní litriúla riamh. Eisceachtaí a choinnítear d’aon ghnó: an teirminéal consóil atá dorcha i gcónaí agus
+   `STATUS_HEX` (`src/shared/constants/statusColors.ts`), an scáthán heicsidheachúlach réitithe de phailéad
+   stádais an kit do ghlaoiteoirí a dteastaíonn heicsidheachúlach litriúil uathu. Ní eisceacht iad na pailéid
+   chatagóireacha a thuilleadh: úsáideann siad ocht dtócan cairte an kit (`--color-chart-1..8`, móide
+   `-ink`/`-subtle`), in ord na sraithe sa kit, trí
+   `src/shared/utils/categoricalPalette.ts` agus, le haghaidh straitéisí ródaithe,
+   `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`; léann imill ReactFlow agus canbhás na
+   gceolfhoirne na hathróga `--orch-status-*` atá feasach ar an téama
+   (`src/shared/components/flow/edgeStyles.ts`).
+2. Ná deisigh `packages/ui-kit/src` de láimh riamh: sioncrónaigh le `scripts/dev/sync-ui-kit.sh <commit>`; teipeann
+   ar gheata réamhdhéanta `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) má bhíonn difríocht in aon bheart
+   ón gcoimit réamhsocraithe (scipeann sé le rabhadh nuair nach bhfuil an chlónáil thuas, `UI_KIT_CLONE` ná
+   `_references/cheaper-inference-ui-kit` ann). Nuair nach bhfuil rud éigin sa kit, seachain é san oiriúntóir nó
+   ar an scáileán agus iarr air ón bhfoireann thuas.
+3. Is é an Béarla réamhshocrú do théacs an kit (`label = "Loading"`, `loadingLabel = "Loading table"`…) — tabhair
+   teaghráin aistrithe ó `useTranslations(...)` ar aghaidh aon uair a rindreálann comhpháirt kit téacs.
+4. Bíonn fóntais Tailwind níos láidre ná aicmí comhpháirteanna an kit (dearbhaíonn an kit
+   `@layer theme, base, components, utilities` agus tá a rialacha sa tsraith `components`) — bain úsáid as
+   fhóntais le haghaidh spásála agus leagan amach, seachas comhpháirteanna an kit a athdhathú.
+5. Ceannteidil: `.ci-heading` le haghaidh teidil leathanaigh agus rannóige; `.ci-dashboard-display` le haghaidh
+   téacs mór, tanaí amháin, amhail cód stádais an leathanaigh earráide. Úsáideann an dá cheann Switzer.
+6. Cosnaíonn `tests/unit/dashboard-kit-sweep.test.ts` glacadh an kit: níl aon réise liginéara Material faoi
+   `src/app` ná `src/shared/components`; i gcrann an deais (`src/app/(dashboard)` agus
+   `src/shared/components`) níl aon `<select>`, `<textarea>` ná `<table>` amh agus níl aon
+   `role="dialog"` déanta de láimh lasmuigh de na heisceachtaí liostaithe (brainse dúchais an oiriúntóra
+   `Select`, `RequestLoggerDetail`); teastaíonn trácht ina bhfuil `kit-exception:` (mar aon leis an gcúis) ó gach
+   `<button>` nó `<input>` amh ansin, trácht a chríochnaíonn ar a mhéad 3 líne os a chionn; ní cheadaítear dathanna
+   an phailéid ná malairtí `dark:` ach sna comhaid a liostaíonn an tástáil.
+7. Deimhnigh an dá théama agus an radharc 390 px roimh PR (scáileáin); ritheann `tests/e2e/a11y.spec.ts` axe.
 
 ## 3. Scáileán a chur leis
 

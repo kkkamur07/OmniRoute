@@ -18,107 +18,128 @@
 
 ## 1. Inda abubuwa suke
 
-- **Kit.** `packages/ui-kit/src` kwafi ne iri ɗaya byte-da-byte na upstream `src/` a commit ɗin da aka ƙayyade a
-  `packages/ui-kit/UPSTREAM.md` (wanda kuma yake rubuta izinin lasisi); `PATCHES.md` yana jera gyare-gyaren
-  gida (babu). Ana amfani da shi kai tsaye a matsayin source, ba tare da build ba: `next.config.mjs` yana transpile ɗinsa, sannan
-  `tsconfig.json` yana map `@omniroute/ui-kit` → `packages/ui-kit/src` da `@omniroute/ui-kit/*` →
-  `packages/ui-kit/src/*` (`vitest.config.ts` da `vitest.mcp.config.ts` suna ɗauke da alias iri ɗaya). Yi import na
-  wani component na kit ta subpath ɗinsa (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…), kada a taɓa yin hakan
-  ta barrel na `@omniroute/ui-kit`: barrel ɗin yana jawo kowane component (har da mai zaɓar kwanan wata)
-  cikin kowane importer. Stylesheet na kit yana shiga ta `src/app/globals.css`
-  (`@import "../../packages/ui-kit/src/ci-styles.css"`, cikakkiyar sheet: babban `ci-ui.css` tare da kowane rukunin pattern).
-- **Tokens.** `packages/ui-kit/src/ci-tokens.css` yana ayyana tokens na `--ci-*`; `src/app/globals.css`
+- **Kit.** `packages/ui-kit/src` kwafin `src/` ne iri ɗaya byte-for-byte na upstream a commit ɗin da aka kulle a
+  `packages/ui-kit/UPSTREAM.md` (wanda kuma ke rubuta izinin lasisi); `PATCHES.md` yana jera facin gida (babu). Ana amfani da shi a matsayin source, ba tare da build ba: `next.config.mjs` yana transpile ɗinsa, kuma
+  `tsconfig.json` yana tsara `@omniroute/ui-kit` → `packages/ui-kit/src` da `@omniroute/ui-kit/*` →
+  `packages/ui-kit/src/*` (`vitest.config.ts` da `vitest.mcp.config.ts` suna ɗauke da alias iri ɗaya). Shigo da
+  wani kit component ta subpath ɗinsa (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…), kada a
+  shigo da shi ta barrel na `@omniroute/ui-kit`: barrel ɗin yana jawo dukkan components (har da date picker)
+  cikin kowane mai shigowa. Stylesheet na kit yana shigowa ta `src/app/globals.css`
+  (`@import "../../packages/ui-kit/src/ci-styles.css"`, cikakken sheet: core ɗin `ci-ui.css` da kowane
+  pattern family).
+- **Tokens.** `packages/ui-kit/src/ci-tokens.css` yana bayyana tokens na `--ci-*`; `src/app/globals.css`
   yana haɗa su da tsoffin sunayen OmniRoute (`--color-*`, `--radius-*`, `--font-sans`/`--font-mono`,
-  `--table-*`, `--orch-status-*`, `--color-fd-*`), domin karatun `var(--color-*)` da ake da shi da utilities na Tailwind
-  su ci gaba da aiki. Sabon code yana amfani da utilities na Tailwind (`bg-surface`, `text-text-muted`,
-  `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) ko classes na kit — ba a taɓa amfani da ƙimar hex
-  (`tests/unit/design-kit-bridge.test.ts` yana tabbatar da bridge ɗin). `text-primary` yana resolve zuwa
-  `--color-primary-ink` ta `--text-color-primary`, don haka primary text yana kasancewa mai sauƙin karantawa yayin da
-  `bg-primary`/`border-primary` suke riƙe da accent surface: a ƙarƙashin Editions shi ne na kit
-  `--ci-color-accent-active` (deep copper `#99562f` a light, copper accent a dark); a ƙarƙashin Classic,
-  lime-800 a light da lime accent a dark. Series na chart suna amfani da
-  `--color-chart-1` … `--color-chart-5`.
-- **Themes.** `<html className="ci-theme">` (`src/app/layout.tsx`) yana shigar da document cikin theme na kit.
-  Zaɓin da ake so shi ne `light`, `dark` ko `system` (`THEME_CONFIG.defaultTheme = "system"` a cikin
-  `src/shared/constants/appConfig.ts`; `system` yana bin `prefers-color-scheme`). `applyTheme()` a cikin
-  `src/store/themeStore.ts` (wanda `THEME_BOOT_SCRIPT` yake kwaikwaya, an inline shi a cikin `src/app/layout.tsx`, kuma yana aiki
-  kafin hydration) yana saita `data-theme="dark"|"light"` tare da toggle class na `.dark` a kan `<html>` a lokaci guda.
-  Dark token set na kit yana dogara da `data-theme="dark"` (`packages/ui-kit/src/ci-tokens.css`);
-  dark overrides na OmniRoute kansa (block na `.dark` a cikin `globals.css`) da tsoffin utilities na Tailwind `dark:`
-  suna dogara da class na `.dark`. Babu presets na accent color: accent koyaushe yana fitowa daga
-  kit, kuma ana cire persisted preset daga tsohon build lokacin da store ya load.
-- **Palettes.** Biyu ne, duka daga kit (`src/shared/constants/appearancePalette.ts`): `editions`, wanda shi ne
-  default, da `classic`. Editions shi ne attribute na kit `data-ci-appearance="editions"` a kan `<html>`, wanda
-  `ci-editions.css` (wanda `ci-ui.css` ya import) yake haɗawa da `data-theme`; Classic kuwa shi ne rashin wannan
-  attribute. Root layout yana server-render attribute ɗin, don haka baƙon da ba shi da wani abin da aka adana (ko ba shi da JS) yana samun
-  Editions a kowane surface — dashboard, login, `/status`, error pages, `/docs` da PWA. Ana adana
-  zaɓin tare da theme a cikin store na `theme` ɗaya (`palette`, `setPalette()`, `applyPalette()` a cikin
-  `src/store/themeStore.ts`) kuma `THEME_BOOT_SCRIPT` yana amfani da shi kafin a yi paint
-  (`src/shared/utils/themeBootScript.ts`, an inline shi a cikin `<head>` na layout), wanda yake cire attribute ɗin
-  kawai idan palette ɗin da aka adana shi ne `"classic"`; `src/app/global-error.tsx`, wanda yake wajen root layout, yana amfani
-  da shi daga store ɗin nan ɗaya. Kada a sa `data-ci-appearance` a kan wani element dabam: kit yana match ɗinsa da
-  `html:root:has([data-ci-appearance="editions"])`, don haka descendant guda ɗaya zai sauya duk document ɗin.
-  Variant na Editions `data-ci-editions-variant="landing"` na shafukan tallace-tallace ne, ba na dashboard ba.
-  Chrome na browser: server yana render default ɗin, Editions, a cikin `viewport.themeColor` (tag ɗaya ga kowane
-  `prefers-color-scheme`) da web manifest — `PWA_THEME_COLORS` a cikin
-  `src/shared/constants/pwaThemeColors.ts`, mirror guda ɗaya na Editions `--ci-color-background`
-  (`#f3f1e9` / `#11120f`), wanda `tests/unit/pwa-theme-colors.test.ts` ya pin zuwa `ci-editions.css`. Daga nan live
-  `<meta name="theme-color">` yana bin palette da mode da aka adana: `THEME_BOOT_SCRIPT` yana sake rubuta
-  tags kafin paint, sannan actions na theme store suna yin hakan a duk lokacin da aka samu canji (`resolveThemeColor()` /
-  `applyThemeColor()` a cikin `src/shared/utils/themeColorMeta.ts`, tare da karanta `CLASSIC_PAGE_BACKGROUND` daga
-  `ciTokens` na kit). Explicit light/dark theme yana saita kowane tag zuwa wannan mode; `system` yana riƙe da
-  colour ɗaya ga kowane scheme. Manifest yana kasancewa Editions: ana fetch ɗinsa sau ɗaya a kowane install, ba tare da
-  preference ba. Monaco yana karanta colours ɗinsa daga probe (`monacoKitTheme.ts`);
-  a ƙarƙashin Editions, karatun probe yana juyar da `data-theme` na root na synchronous pass guda ɗaya, saboda kit yana
-  resolve Editions light/dark daga root.
-- **Components (adapters).** `src/shared/components/index.tsx` yana riƙe API na component na OmniRoute (sunaye iri ɗaya,
-  default exports da props), sannan primitives da ke bayansa adapters ne a kan kit: forms
+  `--table-*`, `--orch-status-*`, `--color-fd-*`), saboda haka reads na `var(--color-*)` da
+  Tailwind utilities suna ci gaba da aiki. Sabon code yana amfani da Tailwind utilities (`bg-surface`, `text-text-muted`,
+  `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) ko kit classes — kada a taɓa amfani da
+  ƙimar hex (`tests/unit/design-kit-bridge.test.ts` yana tilasta wannan haɗin). `text-primary` yana warwarewa zuwa
+  `--color-primary-ink` ta `--text-color-primary`, saboda haka rubutun primary yana kasancewa mai sauƙin karantawa yayin da
+  `bg-primary`/`border-primary` suke riƙe surface ɗin accent: ƙarƙashin Editions shi ne
+  `--ci-color-accent-active` na kit (deep copper `#99562f` a light, copper accent a dark); ƙarƙashin Classic,
+  lime-800 a light da lime accent a dark. Jerin chart suna amfani da
+  `--color-chart-1` … `--color-chart-8`, kowannensu da text-safe `--color-chart-N-ink` da opaque
+  `--color-chart-N-subtle` chip tint, waɗanda aka ware bisa tsarin jerin kit (`ciChartSeriesOrder`).
+- **Themes.** `<html className="ci-theme">` (`src/app/layout.tsx`) yana zaɓar document ɗin ya yi amfani da kit theme.
+  Zaɓin na iya zama `light`, `dark` ko `system` (`THEME_CONFIG.defaultTheme = "system"` a
+  `src/shared/constants/appConfig.ts`; `system` yana bin `prefers-color-scheme`). `applyTheme()` a
+  `src/store/themeStore.ts` (wanda `THEME_BOOT_SCRIPT` yake madubinsa, kuma aka saka shi a cikin
+  `src/app/layout.tsx`, yana gudana kafin hydration) yana saita `data-theme="dark"|"light"` kuma yana kunna
+  `.dark` class a kan `<html>` a lokaci guda. Dark token set na kit yana dogara da `data-theme="dark"`
+  (`packages/ui-kit/src/ci-tokens.css`); dark overrides na OmniRoute (`.dark` block a `globals.css`) da tsoffin Tailwind `dark:`
+  utilities suna dogara da `.dark` class. Babu accent color presets: accent koyaushe daga kit yake, kuma preset da aka
+  adana daga tsohon build ana watsar da shi lokacin da store ya loda.
+- **Palettes.** Biyu ne, dukkansu daga kit (`src/shared/constants/appearancePalette.ts`): `editions`, shi ne
+  tsoho, da `classic`. Editions shi ne attribute na kit `data-ci-appearance="editions"` a kan `<html>`, wanda
+  `ci-editions.css` (wanda `ci-ui.css` ke shigowa da shi) yake haɗawa da `data-theme`; Classic kuwa shi ne rashin wannan
+  attribute. Root layout yana server-render attribute ɗin, saboda haka baƙo wanda ba shi da wani abu a ajiye (ko ba shi da JS)
+  yana samun Editions a kowane surface — dashboard, login, `/status`, error pages, `/docs` da PWA. Ana adana zaɓin
+  kusa da theme a cikin store ɗin `theme` ɗaya (`palette`, `setPalette()`, `applyPalette()` a
+  `src/store/themeStore.ts`) kuma ana amfani da shi kafin paint ta `THEME_BOOT_SCRIPT`
+  (`src/shared/utils/themeBootScript.ts`, wanda aka saka a cikin layout's `<head>`), wanda ke cire attribute ɗin ne kawai
+  idan palette ɗin da aka adana shi ne `"classic"`; `src/app/global-error.tsx`, wanda yake wajen root layout, yana amfani
+  da shi daga wannan store. Kada a saka `data-ci-appearance` a kan wani element: kit yana matching ɗinsa da
+  `html:root:has([data-ci-appearance="editions"])`, saboda haka descendant guda ɗaya zai sauya dukan document.
+  Editions `data-ci-editions-variant="landing"` variant na shafukan tallace-tallace ne, ba na dashboard ba.
+  Browser chrome: server yana render tsoho, Editions, a cikin `viewport.themeColor` (tag ɗaya ga kowane
+  `prefers-color-scheme`) da web manifest — `PWA_THEME_COLORS` a
+  `src/shared/constants/pwaThemeColors.ts`, madubi guda na Editions `--ci-color-background`
+  (`#f3f1e9` / `#11120f`), wanda `tests/unit/pwa-theme-colors.test.ts` ya kulle zuwa
+  `ci-editions.css`. Live `<meta name="theme-color">` daga nan yana bin palette da mode da aka adana:
+  `THEME_BOOT_SCRIPT` yana sake rubuta tags kafin paint kuma ayyukan theme store suna yin haka a kowane canji
+  (`resolveThemeColor()` / `applyThemeColor()` a `src/shared/utils/themeColorMeta.ts`, tare da
+  `CLASSIC_PAGE_BACKGROUND` da aka karanta daga `ciTokens` na kit). Theme na light/dark da aka zaɓa kai tsaye yana
+  saita kowane tag zuwa wannan mode; `system` yana riƙe launi ɗaya ga kowane scheme. Manifest ɗin yana kasancewa Editions:
+  ana fetch ɗinsa sau ɗaya ga kowane install, ba tare da preference ba. Monaco yana karanta launukansa daga probe
+  (`monacoKitTheme.ts`); ƙarƙashin Editions karatun probe yana juya root `data-theme` na synchronous pass guda,
+  saboda kit yana warware Editions light/dark daga root.
+- **Components (adapters).** `src/shared/components/index.tsx` yana kiyaye API na OmniRoute (sunaye, default exports da props
+  iri ɗaya), kuma primitives ɗin da ke bayansa adapters ne a kan kit: forms
   (`Button`, `Input`, `Textarea`, `Checkbox`, `Select`, `Toggle`, `Badge`, `Card`), overlays da feedback
   (`Modal`/`ConfirmModal`, `Tooltip`/`InfoTooltip`, `NotificationToast`, `EmptyState`, `Loading`),
-  tsari (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) da tables
-  (`DataTable`, `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`). Adapter yana import component na kit
-  ta subpath sannan ya map tsoffin props zuwa gare shi — misali `Button variant="primary"` shi ne
-  button na kit `default` (`--ci-button-primary-*`: inverse surface a light, accent tare da
-  ink ɗinsa na `--ci-color-accent-foreground` a dark), `danger` shi ne `destructive`, sannan `warning` shi ne `outline` tare da
-  extension na `.ci-button--warning`. Rules na `.ci-button--warning` da `.ci-badge[data-tone]` da suke a
-  ƙarshen `globals.css` (`@layer components`) extensions ne na OmniRoute a saman classes na kit.
-  `tests/unit/ui/adapters/*.test.tsx` suna pin kowane adapter.
-- **Tsarin shafi.** `src/app/(dashboard)/layout.tsx` yana samar da `DashboardLayout`, wanda ke samar da
+  structure (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) da tables
+  (`DataTable`, `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`). Adapter yana shigo da
+  kit component ta subpath kuma yana mapping legacy props zuwa gare shi — misali, `Button variant="primary"` shi ne
+  kit `default` button (`--ci-button-primary-*`: inverse surface a light, accent tare da
+  `--ci-color-accent-foreground` ink ɗinsa a dark), `danger` shi ne `destructive`, kuma `warning` shi ne `outline` tare da
+  ƙarin `.ci-button--warning`. Dokokin `.ci-button--warning` da `.ci-badge[data-tone]` a ƙarshen `globals.css`
+  (`@layer components`) ƙarin OmniRoute ne a saman kit classes. `tests/unit/ui/adapters/*.test.tsx` yana kulle kowane adapter.
+- **Shell.** `src/app/(dashboard)/layout.tsx` yana fitar da `DashboardLayout`, wanda shi kuma ke fitar da
   `src/shared/components/layouts/DashboardShell.tsx`: `SidebarProvider` / `Sidebar` /
-  `SidebarInset` na kit ɗin (`packages/ui-kit/src/sidebar.tsx`), tare da dabarun kewayawa na OmniRoute a cikin
-  `src/shared/components/Sidebar.tsx`. Mahaɗin "tsallaka zuwa abun ciki" zuwa `#main-content` shi ne abu na farko
-  da za a iya mayar da hankali a kansa. `src/shared/components/Header.tsx` yana ɗauke da `SidebarTrigger` na kit ɗin
-  (maɓallin kunna ko kashe sidebar guda ɗaya tak na tsarin shafin), `ProductSwitcher` na Keak da mabudin command-palette;
-  yana nuna taken hanyar ne kawai yayin da babu `PageHeader` na kit ɗin (`.ci-page-header`) da aka ɗora a cikin
-  `#main-content`, don haka shafin da ke da nasa `PageHeader` yana da `h1` guda ɗaya. `src/shared/components/CommandPalette.tsx`
-  `Dialog` ne na kit ɗin.
-- **Gumaka.** `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) yana warware sunan (kalmomin
-  Material Symbols da allunan suke amfani da su) ta hanyar `ICON_MAP` (`src/shared/constants/iconMap.ts`) zuwa
-  gumakar Lucide. An cire font da package na Material Symbols: sunan da ba ya cikin taswirar yana samar da
-  gumakar wucin gadi marar nuna bambanci (`data-icon-missing="true"`) kuma yana rubuta gargaɗi a console a wajen production.
-  `npm run gen:icon-map` yana fitar da sunayen da ake amfani da su amma babu su a taswirar
-  (`tests/unit/icon-map-coverage.test.ts` yana gaza kan duk sunan da ba shi da gumakar Lucide;
-  `tests/unit/icon-map-object-values.test.ts` yana gwada sunayen da aka adana a cikin abubuwan lookup);
-  `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` yana sake rubuta span na zahiri na
-  `<span className="material-symbols-outlined">` zuwa `<Icon>`.
-- **Alama.** `src/shared/components/OmniRouteLogo.tsx` yana naɗe kit ɗin: default export `OmniRouteLogo`
-  yana samar da `ProductIcon product="omniroute" variant="glyph"` (SVG na cikin layi, mai aminci ga `basePath`) kuma
-  `OmniRouteLockup` yana samar da `ProductLockup product="omniroute"` (sunan isa ga masu amfani "Keak OmniRoute") ko kuma, ga
-  masu gudanarwa na white-label, nasu `name`/`logoSrc`. Wuraren da product-switcher ke kaiwa suna cikin
-  `src/shared/constants/keakProducts.ts` (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). Allunan masu zaman kansu
-  — `src/app/login/page.tsx`, `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`,
+  `SidebarInset` na kayan (`packages/ui-kit/src/sidebar.tsx`), tare da dabarun kewayawar OmniRoute a cikin
+  `src/shared/components/Sidebar.tsx`. Mahadar “tsallaka zuwa abun ciki” zuwa `#main-content` ita ce abu na
+  farko da za a iya mayar da hankali a kai. `src/shared/components/Header.tsx` yana ƙunshe da kit
+  `SidebarTrigger` (maɓallin sauya sidebar kaɗai na shell), Keak `ProductSwitcher` da mai buɗe command-palette; yana nuna
+  taken hanya ne kawai idan babu kit `PageHeader` (`.ci-page-header`) da aka ɗora a cikin `#main-content`, don haka shafi mai
+  nasa `PageHeader` yana da `h1` guda ɗaya. `src/shared/components/CommandPalette.tsx` kit ne `Dialog`.
+- **Gumaka.** `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) yana warware sunan (ƙamus ɗin
+  Material Symbols da fuskar allo ke amfani da shi) ta `ICON_MAP` (`src/shared/constants/iconMap.ts`) zuwa alamar Lucide. An
+  cire font da package na Material Symbols: suna da ya ɓace daga map ɗin yana fitar da alamar madadin tsaka-tsaki
+  (`data-icon-missing="true"`) kuma yana rubuta gargaɗin console a wajen yanayin production.
+  `npm run gen:icon-map` yana buga sunayen da ake amfani da su waɗanda suka ɓace daga map ɗin
+  (`tests/unit/icon-map-coverage.test.ts` yana kasa idan kowane suna ba shi da alamar Lucide;
+  `tests/unit/icon-map-object-values.test.ts` yana rufe sunayen da aka adana a cikin abubuwan neman ƙima);
+  `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` yana sake rubuta
+  `<span className="material-symbols-outlined">` na zahiri zuwa `<Icon>`.
+- **Alama.** `src/shared/components/OmniRouteLogo.tsx` yana naɗe kayan: tsohon fitarwa `OmniRouteLogo`
+  yana fitar da `ProductIcon product="omniroute" variant="glyph"` (inline SVG, mai aminci ga `basePath`) kuma
+  `OmniRouteLockup` yana fitar da `ProductLockup product="omniroute"` (sunan samun dama “Keak OmniRoute”) ko, ga
+  masu aiki na white-label, nasu `name`/`logoSrc`. Wuraren zuwa na mai sauya samfur suna cikin
+  `src/shared/constants/keakProducts.ts` (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). Shafukan da ke zaman kansu — `src/app/login/page.tsx`, `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`,
   `src/app/offline/page.tsx`, `src/app/not-found.tsx` da `src/shared/components/ErrorPageScaffold.tsx`
   — suna nuna lockup ɗin; `tests/unit/brand-pages-static.test.ts` yana tabbatar da hakan.
 
 ## 2. Dokoki
 
-1. Alamu, ba a zahiri ba. Keɓancewa da gangan: tashar tashar wasan bidiyo mai duhu ko da yaushe da `STATUS_HEX` (`src/shared/constants/statusColors.ts`), madubi da aka warware-hex na palette ɗin kit don masu kira waɗanda ke buƙatar hex na gaske. Fale-falen fale-falen buraka ba su da wata illa: suna tafiya akan alamomin ginshiƙi biyar na kit (`--color-chart-1..5`) ta hanyar `src/shared/utils/categoricalPalette.ts` kuma, don dabaru, `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`; gefuna ReactFlow da zanen ƙungiyar kaɗe-kaɗe suna karanta jigo-sane masu canjin `--orch-status-*` (`src/shared/components/flow/edgeStyles.ts`).
-2. Kada a taɓa yin facin `packages/ui-kit/src` da hannu: daidaita tare da `scripts/dev/sync-ui-kit.sh <commit>`; Ƙofar riga-kafi `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) ta gaza akan kowane byte da ya bambanta da ƙaddamarwa na sama (yana tsallakewa tare da faɗakarwa lokacin da clone na sama, `UI_KIT_CLONE` ko `_references/cheaper-inference-ui-kit`, ba ya nan). Lokacin da kit ɗin ya rasa wani abu, yi aiki a kusa da shi a cikin adaftan ko allon kuma nemi shi sama.
-3. Matsalolin rubutun kit ɗin Ingilishi ne (`label = "Loading"`, `loadingLabel = "Loading table"`...) — wuce kirtani da aka fassara daga `useTranslations(...)` a duk lokacin da ɓangaren kit ɗin ke yin rubutu.
-4. Abubuwan amfani na wutsiya sun yi nasara akan azuzuwan kayan aikin (kit ɗin ya bayyana `@layer theme, base, components, utilities` da dokokinsa suna rayuwa a cikin `components`) - amfani da kayan aiki don tazara da shimfidawa, ba don sake canza kayan kayan kayan launi ba.
-5. Kanun labarai: `.ci-heading` don taken shafi da sashe; `.ci-dashboard-display` kawai don babba, rubutun nuni mara ƙarfi kamar lambar matsayi na shafin kuskure. Dukansu suna amfani da Switzer.
-6. `tests/unit/dashboard-kit-sweep.test.ts` tana kula da ɗaukar kaya: babu tazarar ligature na kayan aiki ƙarƙashin `src/app` ko `src/shared/components`; a cikin bishiyar dashboard (`src/app/(dashboard)` da `src/shared/components`) babu danyen `<select>`, `<textarea>` ko `<table>` kuma babu `role="dialog"` da aka yi birgima a waje da keɓantattun abubuwan da aka lissafa (reshen asalin `Select` adaftar, `RequestLoggerDetail`); kowane danyen `<button>` ko `<input>` akwai bukatar sharhi mai kunshe da `kit-exception:` (tare da dalili) ya kare a mafi yawan layuka 3 a samansa; palette hues da `dark:` bambance-bambancen karatu kawai a cikin fayilolin lissafin gwajin.
-7. Tabbatar da jigogi biyu da 390 px viewport kafin PR (screenshots); `tests/e2e/a11y.spec.ts` gudu gatari.
+1. Tokens kawai, ba literals ba. An bar waɗannan keɓantattun abubuwa da gangan: tashar na'urar wasan bidiyo mai duhu koyaushe da
+   `STATUS_HEX` (`src/shared/constants/statusColors.ts`), madubin hex da aka warware na palette ɗin matsayin kit
+   ga masu kira da ke buƙatar hex literal. Palette na rukuni ba su kasance keɓantattu ba kuma:
+   suna amfani da tokens takwas na jadawalin kit (`--color-chart-1..8`, tare da `-ink`/`-subtle`), cikin
+   tsarin jerin kit, ta hanyar
+   `src/shared/utils/categoricalPalette.ts` da, ga dabarun routing,
+   `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`; gefunan ReactFlow da canvas ɗin orchestration
+   suna karanta sauye-sauyen `--orch-status-*` masu sane da jigo
+   (`src/shared/components/flow/edgeStyles.ts`).
+2. Kada a taɓa gyara `packages/ui-kit/src` da hannu: a daidaita shi da `scripts/dev/sync-ui-kit.sh <commit>`; ƙofar pre-commit
+   `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) za ta gaza idan wani byte ya bambanta
+   da pinned upstream commit (tana tsallakewa da gargaɗi idan clone ɗin upstream,
+   `UI_KIT_CLONE` ko `_references/cheaper-inference-ui-kit`, babu). Idan kit ɗin bai ƙunshi wani abu ba,
+   a nemo mafita a adapter ko allon, sannan a nemi upstream ya ƙara shi.
+3. Tsoffin rubutun kit na Turanci ne (`label = "Loading"`, `loadingLabel = "Loading table"`…) — a aika
+   kirtan da aka fassara daga `useTranslations(...)` duk lokacin da wani ɓangaren kit ke nuna rubutu.
+4. Abubuwan amfani na Tailwind sun fi azuzuwan ɓangarorin kit fifiko (kit ɗin yana ayyana
+   `@layer theme, base, components, utilities` kuma dokokinsa suna cikin `components`) — a yi amfani da utilities
+   don tazarar abubuwa da shimfiɗa, ba don sake canza launin ɓangarorin kit ba.
+5. Kanun rubutu: a yi amfani da `.ci-heading` don taken shafi da sashe; `.ci-dashboard-display` kuma kawai don manyan,
+   rubutun nunawa marasa cunkoso kamar lambar matsayin shafin kuskure. Dukansu suna amfani da Switzer.
+6. `tests/unit/dashboard-kit-sweep.test.ts` yana sa ido kan amfani da kit: babu Material ligature span a ƙarƙashin
+   `src/app` ko `src/shared/components`; a cikin bishiyar dashboard (`src/app/(dashboard)` da
+   `src/shared/components`) babu `<select>`, `<textarea>` ko `<table>` kai tsaye, kuma babu
+   `role="dialog"` da aka ƙera da hannu a wajen keɓantattun abubuwan da aka lissafta (reshe na native na
+   `Select` adapter, `RequestLoggerDetail`); kowane `<button>` ko `<input>` kai tsaye a wurin yana buƙatar sharhi mai ɗauke da
+   `kit-exception:` (tare da dalili) wanda ya ƙare a mafi yawan layuka 3 kafin sa; launukan palette da
+   bambance-bambancen `dark:` su kasance kawai a fayilolin da gwajin ya lissafta.
+7. A tabbatar da jigogi biyu da faɗin viewport na 390 px kafin PR (screenshots); `tests/e2e/a11y.spec.ts` yana gudanar da
+   axe.
 
 ## 3. Ƙara allo
 

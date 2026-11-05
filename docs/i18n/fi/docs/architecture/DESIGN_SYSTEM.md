@@ -6,26 +6,141 @@
 
 > **Status:** kojelauta on rakennettu** Keak CI UI Kit** (`@keak/cheaper-inference-ui-kit`), toimitetaan työtilana `packages/ui-kit` (`@omniroute/ui-kit`; alkuvirran tilannekuva on kiinnitetty `packages/ui-kit/UPSTREAM.md` ään ja sitä suojaa `npm run check:ui-kit-snapshot`). Valo on kanoninen teema; oletusasetus on `system`. Oletuspaletti on sarjan paletti** versiot** ulkonäkö (lämmin paperi neutraalit ja kupari aksentti `#e5ac82`, `packages/ui-kit/src/ci-editions.css`); Asetukset → Ulkoasu → Väripaletti tarjoaa** Klassinen** , sarjan perusmerkit lime-korostuksella. Switzer on yksi UI, näyttö- ja kooditekstiperhe (`--ci-font-ui`; `--ci-font-display` ja `--ci-font-mono` ratkaisevat sen), itse isännöi itse sarja (`packages/ui-kit/src/ci-fonts.css`, `ci-tokens.css`:n tuoma). Scripts Switzeristä puuttuu kaatuminen glyfi kerrallaan (`src/app/globals.css`): Inter kyrilliselle, kreikalle ja vietnam ja vain `html[dir="rtl"]` alla, Vazirmatn arabialle. Jokainen kuvake on Luciden merkki.
 
-## 1. Missä asiat elävät
+## 1. Missä asiat sijaitsevat
 
-- **Pakki.** `packages/ui-kit/src` on tavukohtainen kopio ylävirran `src/` `packages/ui-kit/UPSTREAM.md` ssä kiinnitetyssä sitoumuksessa (joka myös tallentaa lisenssin valtuutuksen); `PATCHES.md` listaa paikalliset korjaustiedostot (ei mitään). Sitä käytetään lähteenä ilman rakennusta: `next.config.mjs` siirtää sen ja `tsconfig.json` kartoittaa `@omniroute/ui-kit` → `packages/ui-kit/src` ja `@omniroute/ui-kit/*` → `packages/ui-kit/src/*` (`vitest.config.ts` ja `vitest.mcp.config.ts` kantavat saman aliaksen). Tuo sarjakomponentti sen alipolun (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…) mukaan, älä koskaan `@omniroute/ui-kit` tynnyrin kautta: tynnyri vetää jokaisen komponentin (mukaan lukien päivämäärän poimijan) jokaiseen maahantuojaan. Sarjan tyylisivu tulee `src/app/globals.css` kautta (`@import "../../packages/ui-kit/src/ci-styles.css"`, koko arkki: ydin `ci-ui.css` plus jokainen kuvioperhe).
-- **Tokenit.** `packages/ui-kit/src/ci-tokens.css` ilmoittaa `--ci-*` -merkit; `src/app/globals.css` yhdistää ne vanhoihin OmniRoute nimiin (`--color-*`, `--radius-*`, `--font-sans`/`--font-mono`, `--table-*`, `--orch-status-*`, `--color-fd-*`), joten nykyiset `var(--color-*)` lukuohjelmat ja Tailwind -apuohjelmat jatkavat toimintaansa. Uusi koodi käyttää Tailwind -apuohjelmia (`bg-surface`, `text-text-muted`, `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) tai kit-luokkia — ei koskaan hex-arvoa (`tests/unit/design-kit-bridge.test.ts` pakottaa sillan). `text-primary` muuttuu `--color-primary-ink` :ksi `--text-color-primary` kautta, joten ensisijainen teksti pysyy luettavissa, kun taas `bg-primary`/`border-primary` säilyttää korostuspinnan: Editionsissa se on sarjan `--ci-color-accent-active` (syvä kupari `#99562f` valossa, kupari aksentti pimeässä); Classic alla, lime-800 vaaleassa ja lime aksentti pimeässä. Kaaviosarja käyttää `--color-chart-1` … `--color-chart-5`.
-- **Teemat.** `<html className="ci-theme">` (`src/app/layout.tsx`) valitsee asiakirjan sarjan teemaksi. Etusija on `light`, `dark` tai `system` (`THEME_CONFIG.defaultTheme = "system"` in `src/shared/constants/appConfig.ts`; `system` seuraa `prefers-color-scheme`). `applyTheme()` in `src/store/themeStore.ts` (peilataan `THEME_BOOT_SCRIPT` llä, rivillä `src/app/layout.tsx`, joka suoritetaan ennen hydraatiota) asettaa `data-theme="dark"|"light"` ja vaihtaa `.dark` -luokan `<html>` ssä yhdessä. Sarjan tumma merkkisarja on näppäilty `data-theme="dark"` :lla (`packages/ui-kit/src/ci-tokens.css`); OmniRoute:n omat pimeät ohitukset ( `.dark` -lohko `globals.css` ssa) ja vanha Tailwind `dark:` -apuohjelmaavain `.dark` -luokassa. Korostusvärien esiasetuksia ei ole: korostus tulee aina sarjasta, ja vanhan koontiversion säilynyt esiasetus jätetään pois, kun kauppa latautuu.
-- **Paletit.** Kaksi, molemmat sarjasta (`src/shared/constants/appearancePalette.ts`): `editions`, oletusarvo ja `classic`. Editions on pakkauksen `data-ci-appearance="editions"` attribuutti `<html>` ssä, jonka `ci-editions.css` ( `ci-ui.css` n tuoma) yhdistää `data-theme` kanssa; Classic on attribuutin puuttuminen. Juuriasettelun palvelin renderöi attribuutin, joten vierailija, jolla ei ole mitään tallennettua (tai ei JS), saa versiot jokaiselle pinnalle — dashboard, login, `/status`, virhesivut, `/docs` ja PWA. Valinta säilyy teeman vieressä samassa `theme` -kaupassa (`palette`, `setPalette()`, `applyPalette()` in `src/store/themeStore.ts`) ja sitä käytetään ennen maalia `THEME_BOOT_SCRIPT` :lla (`src/shared/utils/themeBootScript.ts`, upotettu asettelun `<head>`), joka poistaa määritteen vain, kun tallennettu paletti on `"classic"`; `src/app/global-error.tsx`, juuriasettelun ulkopuolella, käyttää sitä samasta kaupasta. Älä laita `data-ci-appearance` ää mihinkään muuhun elementtiin: sarja vastaa sen kanssa `html:root:has([data-ci-appearance="editions"])`, joten yksi jälkeläinen vaihtaisi koko asiakirjan. Editions `data-ci-editions-variant="landing"` -versio on tarkoitettu markkinointisivuille, ei kojelautaan. Selaimen kromi: palvelin näyttää oletusversion Editionsin `viewport.themeColor` :ssa (yksi tagi per `prefers-color-scheme`) ja verkkoluettelon — `PWA_THEME_COLORS` in `src/shared/constants/pwaThemeColors.ts`, Editionsin `--ci-color-background` (`#f3f1e9` / `#11120f`) peili, jonka `tests/unit/pwa-theme-colors.test.ts` on kiinnittänyt `ci-editions.css`. Live `<meta name="theme-color">` seuraa sitten tallennettua palettia ja tilaa: `THEME_BOOT_SCRIPT` kirjoittaa tagit uudelleen ennen maalia ja teemakaupan toiminnot tekevät sen jokaisen muutoksen yhteydessä (`resolveThemeColor()` / `applyThemeColor()` in `src/shared/utils/themeColorMeta.ts`, jossa `CLASSIC_PAGE_BACKGROUND` luetaan pakkauksen `ciTokens` sta ). Eksplisiittinen light/dark teema asettaa jokaisen tagin tähän tilaan; `system` säilyttää yhden värin mallia kohden. Luettelo pysyy versioina: se haetaan kerran asennusta kohden ilman etusijaa. Monaco lukee sen värit anturista (`monacoKitTheme.ts`); Editions-kohdassa koetinluku kääntää `data-theme` juuren yhden synkronisen kierroksen aikana, koska sarja ratkaisee Editions light/dark juurista.
-- **Komponentit (sovittimet).** `src/shared/components/index.tsx` säilyttää OmniRoute -komponentin API (samat nimet, oletusvienti ja rekvisiitta), ja sen takana olevat primitiivit ovat sovittimia sarjan yli: lomakkeet (`Button`, `Input`, `Textarea`, `Checkbox`, `Select`, `Toggle`, `Badge`, `Card`),`Modal`/`ConfirmModal` z (qm /z feedback) `Tooltip`,`InfoTooltip`, `NotificationToast`, `EmptyState` `Loading`, rakenne (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) ja taulukot (`DataTable`, `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`). Sovitin tuo sarjakomponentin alipolun mukaan ja kartoittaa siihen vanhat rekvisiitta — esimerkiksi `Button variant="primary"` on kit `default` painike (`--ci-button-primary-*`: käänteispinta valossa, korostus sen `--ci-color-accent-foreground` -musteella pimeässä), `danger` on `destructive` ja `warning` on `outline` plus `.ci-button--warning` laajennus. `globals.css` (`@layer components`) lopussa olevat `.ci-button--warning` ja `.ci-badge[data-tone]` säännöt ovat OmniRoute laajennuksia sarjaluokkien päälle. `tests/unit/ui/adapters/*.test.tsx` pin jokainen sovitin.
-- **Kuori.** `src/app/(dashboard)/layout.tsx` hahmontaa `DashboardLayout`, joka hahmontaa `src/shared/components/layouts/DashboardShell.tsx`: sarjan `SidebarProvider` / `Sidebar` / `SidebarInset` (`packages/ui-kit/src/sidebar.tsx`), OmniRoute:n navigointilogiikalla `src/shared/components/Sidebar.tsx` ssä. "Siirry sisältöön" -linkki `#main-content` :hen on ensimmäinen tarkennettavissa oleva elementti. `src/shared/components/Header.tsx` sisältää sarjan `SidebarTrigger` (suorituksen ainoa sivupalkin kytkin), Keak `ProductSwitcher` ja komentopaletin avaajan; se näyttää vain reitin otsikon, kun `#main-content` sisään ei ole asennettu sarjaa `PageHeader` (`.ci-page-header`), joten sivulla, jolla on oma `PageHeader` on yksi `h1`. `src/shared/components/CommandPalette.tsx` on `Dialog` sarja.
-- **Kuvakkeet.** `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) ratkaisee nimen (ruutujen käyttämä materiaalisymbolien sanasto) `ICON_MAP` :n (`src/shared/constants/iconMap.ts`) kautta Luciden glyfiksi. Materiaalisymbolit -kirjasin ja -paketti ovat poissa: kartalta puuttuva nimi tekee neutraalin paikkamerkkimerkinnän (`data-icon-missing="true"`) ja kirjaa konsolivaroituksen tuotannon ulkopuolella. `npm run gen:icon-map` tulostaa käytössä olevat nimet, jotka puuttuvat kartasta (`tests/unit/icon-map-coverage.test.ts` epäonnistuu kaikissa nimissä ilman Lucide-kuvaketta; `tests/unit/icon-map-object-values.test.ts` kattaa hakuobjekteihin tallennetut nimet); `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` kirjoittaa uudelleen kirjaimellisen `<span className="material-symbols-outlined">` alueen `<Icon>`:ksi.
-- **Merkki.** `src/shared/components/OmniRouteLogo.tsx` kääri pakkauksen: oletusvienti `OmniRouteLogo` hahmontaa `ProductIcon product="omniroute" variant="glyph"` (inline SVG, `basePath` -safe) ja `OmniRouteLockup` `ProductLockup product="omniroute"` (saatava nimi "Keak OmniRoute") tai white-label-operaattoreille oman `name`/`logoSrc`. Tuotteenvaihtokohteet sijaitsevat `src/shared/constants/keakProducts.ts` ssä (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). Erilliset näytöt — `src/app/login/page.tsx`, `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`, `src/app/offline/page.tsx`, `src/app/not-found.tsx` ja `src/shared/components/ErrorPageScaffold.tsx` — näyttävät lukituksen; `tests/unit/brand-pages-static.test.ts` suojelee sitä.
+- **Kit.** `packages/ui-kit/src` on tavukohtaisesti identtinen upstreamin `src/`-hakemiston kanssa commitissa, johon viitataan tiedostossa
+  `packages/ui-kit/UPSTREAM.md` (joka sisältää myös lisenssin käyttöluvan); `PATCHES.md` luettelee paikalliset
+  korjaukset (ei yhtään). Sitä käytetään lähdekoodina ilman koontia: `next.config.mjs` transpileeraa sen, ja
+  `tsconfig.json` yhdistää `@omniroute/ui-kit` → `packages/ui-kit/src` ja `@omniroute/ui-kit/*` →
+  `packages/ui-kit/src/*` (`vitest.config.ts` ja `vitest.mcp.config.ts` sisältävät saman aliaksen). Tuo
+  kitin komponentti sen alihakemistopolulla (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…),
+  älä koskaan `@omniroute/ui-kit`-barrelin kautta: barrel tuo jokaisen komponentin (myös päivämääränvalitsimen)
+  jokaiseen importoijaan. Kitin tyylitiedosto tulee käyttöön `src/app/globals.css`-tiedoston kautta
+  (`@import "../../packages/ui-kit/src/ci-styles.css"`, täydellinen tyylitiedosto: ydin `ci-ui.css` sekä kaikki
+  kuvioperheet).
+- **Tokenit.** `packages/ui-kit/src/ci-tokens.css` määrittelee `--ci-*`-tokenit; `src/app/globals.css`
+  yhdistää ne vanhoihin OmniRoute-nimiin (`--color-*`, `--radius-*`, `--font-sans`/`--font-mono`,
+  `--table-*`, `--orch-status-*`, `--color-fd-*`), jotta olemassa olevat `var(--color-*)`-viittaukset ja Tailwindin
+  utiliteetit toimivat edelleen. Uusi koodi käyttää Tailwindin utiliteetteja (`bg-surface`, `text-text-muted`,
+  `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) tai kitin luokkia — ei koskaan heksadesimaaliarvoa
+  (`tests/unit/design-kit-bridge.test.ts` valvoo yhdistämistä). `text-primary` ratkaistaan
+  `--color-primary-ink`-arvoksi `--text-color-primary`-muuttujan kautta, joten ensisijainen teksti pysyy luettavana,
+  kun taas `bg-primary`/`border-primary` säilyttävät korostuspinnan: Editions-tilassa se on kitin
+  `--ci-color-accent-active` (vaalea syvä kupari `#99562f`, tumma kuparikorostus); Classic-tilassa
+  vaalea lime-800 ja tumma limenvärinen korostus. Kaaviosarjat käyttävät muuttujia
+  `--color-chart-1` … `--color-chart-8`, joilla jokaisella on tekstille turvallinen
+  `--color-chart-N-ink` ja peittävä `--color-chart-N-subtle`-siruväritys, jotka määritetään kitin sarjajärjestyksessä
+  (`ciChartSeriesOrder`).
+- **Teemat.** `<html className="ci-theme">` (`src/app/layout.tsx`) ottaa kitin teeman käyttöön dokumentissa.
+  Asetus voi olla `light`, `dark` tai `system` (`THEME_CONFIG.defaultTheme = "system"` tiedostossa
+  `src/shared/constants/appConfig.ts`; `system` seuraa asetusta `prefers-color-scheme`). Tiedostossa
+  `src/store/themeStore.ts` oleva `applyTheme()` (jonka vastine on `THEME_BOOT_SCRIPT`, upotettuna
+  `src/app/layout.tsx`-tiedostoon ja suoritetaan ennen hydraatiota) asettaa `data-theme="dark"|"light"`-arvon
+  ja vaihtaa `<html>`-elementin `.dark`-luokkaa samanaikaisesti. Kitin tumma token-joukko perustuu
+  `data-theme="dark"`-arvoon (`packages/ui-kit/src/ci-tokens.css`); OmniRouten omat tumman tilan ohitukset
+  (`globals.css`-tiedoston `.dark`-lohko) ja vanhat Tailwindin `dark:`-utiliteetit perustuvat `.dark`-luokkaan.
+  Korostusvärin esiasetuksia ei ole: korostus tulee aina kitistä, ja vanhasta koontiversiosta tallennettu esiasetus
+  poistetaan kaupan latautuessa.
+- **Paletit.** Kaksi, molemmat kitistä (`src/shared/constants/appearancePalette.ts`): oletuksena käytettävä
+  `editions` ja `classic`. Editions on kitin `<html>`-elementin `data-ci-appearance="editions"`-attribuutti, jonka
+  `ci-editions.css` (tuotu `ci-ui.css`-tiedostossa) yhdistää `data-theme`-arvoon; Classic tarkoittaa attribuutin
+  puuttumista. Juuritason layout renderöi attribuutin palvelimella, joten kävijä, jolla ei ole tallennettua asetusta
+  (tai JavaScriptiä), saa Editions-teeman kaikilla pinnoilla — hallintapaneelissa, kirjautumisessa, `/status`-,
+  virhe- ja `/docs`-sivuilla sekä PWA:ssa. Valinta tallennetaan teeman viereen samaan `theme`-storeen
+  (`palette`, `setPalette()`, `applyPalette()` tiedostossa `src/store/themeStore.ts`) ja otetaan käyttöön ennen
+  piirtämistä `THEME_BOOT_SCRIPT`-skriptillä (`src/shared/utils/themeBootScript.ts`, upotettuna layoutin
+  `<head>`-osioon), joka poistaa attribuutin vain, kun tallennettu paletti on `"classic"`; juuritason layoutin
+  ulkopuolella oleva `src/app/global-error.tsx` ottaa sen käyttöön samasta storesta. Älä lisää
+  `data-ci-appearance`-attribuuttia mihinkään muuhun elementtiin: kit yhdistää sen valitsimella
+  `html:root:has([data-ci-appearance="editions"])`, joten yksikin jälkeläinen vaihtaisi koko dokumentin.
+  Editionsin `data-ci-editions-variant="landing"`-variantti on tarkoitettu markkinointisivuille, ei hallintapaneeliin.
+  Selaimen käyttöliittymä: palvelin renderöi oletuksen, Editionsin, `viewport.themeColor`-arvoon (yksi tunniste
+  kutakin `prefers-color-scheme`-asetusta kohti) ja verkkosovelluksen manifestiin —
+  `PWA_THEME_COLORS` tiedostossa `src/shared/constants/pwaThemeColors.ts`, joka on Editionsin
+  `--ci-color-background`-arvon (`#f3f1e9` / `#11120f`) ainoa peilaus ja jonka
+  `tests/unit/pwa-theme-colors.test.ts` sitoo `ci-editions.css`-tiedostoon. Aktiivinen
+  `<meta name="theme-color">` seuraa sen jälkeen tallennettua palettia ja tilaa:
+  `THEME_BOOT_SCRIPT` kirjoittaa tunnisteet uudelleen ennen piirtämistä, ja theme-storen toiminnot tekevät sen
+  jokaisen muutoksen yhteydessä (`resolveThemeColor()` / `applyThemeColor()` tiedostossa
+  `src/shared/utils/themeColorMeta.ts`, jossa `CLASSIC_PAGE_BACKGROUND` luetaan kitin `ciTokens`-arvoista).
+  Nimenomainen vaalea tai tumma teema asettaa jokaisen tunnisteen kyseiseen tilaan; `system` säilyttää yhden
+  värin kutakin värimaailmaa kohti. Manifesti pysyy Editions-teemassa: se haetaan kerran asennusta kohti ilman
+  asetusta. Monaco lukee värinsä probe-määrityksestä (`monacoKitTheme.ts`); Editions-tilassa probe-luku vaihtaa
+  juuren `data-theme`-arvon yhden synkronisen suorituksen ajaksi, koska kit ratkaisee Editionsin vaalean tai tumman
+  tilan juuren perusteella.
+- **Komponentit (sovittimet).** `src/shared/components/index.tsx` säilyttää OmniRouten komponentti-API:n
+  (samat nimet, oletusviennit ja propsit), ja sen taustalla olevat primitiivit ovat kitin päälle rakennettuja
+  sovittimia: lomakkeet (`Button`, `Input`, `Textarea`, `Checkbox`, `Select`, `Toggle`, `Badge`, `Card`),
+  peittokuvat ja palaute (`Modal`/`ConfirmModal`, `Tooltip`/`InfoTooltip`, `NotificationToast`, `EmptyState`,
+  `Loading`), rakenne (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) sekä
+  taulukot (`DataTable`, `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`). Sovitin tuo kitin komponentin
+  alihakemistopolulla ja yhdistää vanhat propsit siihen — esimerkiksi `Button variant="primary"` on kitin
+  `default`-painike (`--ci-button-primary-*`: vaaleassa käänteinen pinta, tummassa korostus, jonka tekstiväri on
+  `--ci-color-accent-foreground`), `danger` on `destructive`, ja `warning` on `outline` sekä
+  `.ci-button--warning`-laajennus. `globals.css`-tiedoston lopussa olevat `.ci-button--warning`- ja
+  `.ci-badge[data-tone]`-säännöt (`@layer components`) ovat OmniRouten laajennuksia kitin luokkien päälle.
+  `tests/unit/ui/adapters/*.test.tsx` lukitsee kunkin sovittimen toiminnan.
+- **Shelli.** `src/app/(dashboard)/layout.tsx` renderöi `DashboardLayout`-komponentin, joka renderöi
+  `src/shared/components/layouts/DashboardShell.tsx`-komponentin: kitin `SidebarProvider` / `Sidebar` /
+  `SidebarInset`-komponentit (`packages/ui-kit/src/sidebar.tsx`) sekä OmniRouten navigointilogiikan
+  `src/shared/components/Sidebar.tsx`-tiedostossa. Sisällön ohittamiseen tarkoitettu `#main-content`-linkki on
+  ensimmäinen kohdistettava elementti. `src/shared/components/Header.tsx` sisältää kitin
+  `SidebarTrigger`-komponentin (shellin ainoan sivupalkin vaihtopainikkeen), Keakin `ProductSwitcher`-komponentin
+  ja komentopaletin avaajan; se näyttää reitin otsikon vain silloin, kun `#main-content`-elementin sisällä ei ole
+  kitin `PageHeader`-komponenttia (`.ci-page-header`), joten oman `PageHeader`-komponentin sisältävällä sivulla on
+  yksi `h1`-elementti. `src/shared/components/CommandPalette.tsx` on kitin `Dialog`-komponentti.
+- **Kuvakkeet.** `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) selvittää nimen
+  (näkymien käyttämän Material Symbols -sanaston) `ICON_MAP`-määrityksen
+  (`src/shared/constants/iconMap.ts`) kautta Lucide-kuvakkeeksi. Material Symbols -fontti ja -paketti on poistettu:
+  kartasta puuttuva nimi renderöi neutraalin paikkamerkkikuvakkeen (`data-icon-missing="true"`) ja kirjaa
+  konsolivaroituksen tuotantoympäristön ulkopuolella. `npm run gen:icon-map` tulostaa käytössä olevat nimet, jotka
+  puuttuvat kartasta (`tests/unit/icon-map-coverage.test.ts` epäonnistuu, jos millä tahansa nimellä ei ole
+  Lucide-kuvaketta; `tests/unit/icon-map-object-values.test.ts` kattaa hakutaulukoihin tallennetut nimet);
+  `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` kirjoittaa literaalit
+  `<span className="material-symbols-outlined">`-elementit uudelleen `<Icon>`-elementeiksi.
+- **Brändi.** `src/shared/components/OmniRouteLogo.tsx` käyttää kittiä: oletusvienti `OmniRouteLogo`
+  renderöi `ProductIcon product="omniroute" variant="glyph"` -komponentin (sisäisen SVG:n, joka on
+  `basePath`-turvallinen), ja `OmniRouteLockup` renderöi `ProductLockup product="omniroute"` -komponentin
+  (saavutettava nimi "Keak OmniRoute") tai white label -operaattoreille heidän oman `name`-/`logoSrc`-arvonsa.
+  Tuotevaihtimen kohteet sijaitsevat tiedostossa
+  `src/shared/constants/keakProducts.ts` (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). Erilliset näkymät —
+  `src/app/login/page.tsx`, `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`,
+  `src/app/offline/page.tsx`, `src/app/not-found.tsx` ja `src/shared/components/ErrorPageScaffold.tsx`
+  — näyttävät lockupin; `tests/unit/brand-pages-static.test.ts` varmistaa tämän.
 
 ## 2. Säännöt
 
-1. Tokenit, ei koskaan kirjaimet. Tarkoituksenmukaisesti pidetyt poikkeukset: aina tumma konsolipääte ja `STATUS_HEX` (`src/shared/constants/statusColors.ts`), setin tilapaletin resoluutioinen hex-peili soittajille, jotka tarvitsevat kirjaimellisen heksan. Kategoriset paletit eivät ole enää poikkeus: ne kulkevat sarjan viidellä karttatunnuksella (`--color-chart-1..5`) `src/shared/utils/categoricalPalette.ts` ja reititysstrategioiden osalta `src/app/(dashboard)/dashboard/combos/strategyPalette.ts` kautta; ReactFlow reunat ja orkestrointikangas lukevat teematietoisia `--orch-status-*` muuttujia (`src/shared/components/flow/edgeStyles.ts`).
-2. Älä koskaan korjaa `packages/ui-kit/src` käsin: synkronoi `scripts/dev/sync-ui-kit.sh <commit>` kanssa; pre-commit portti `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) epäonnistuu missä tahansa tavussa, joka eroaa kiinnitetystä ylävirran vahvistuksesta (se ohittaa varoituksen kanssa, kun ylävirran klooni, `UI_KIT_CLONE` tai `_references/cheaper-inference-ui-kit`, puuttuu). Kun sarjasta puuttuu jotain, kierrä se sovittimessa tai näytössä ja pyydä sitä alkupäässä.
-3. Kitin tekstin oletusasetukset ovat englanti (`label = "Loading"`, `loadingLabel = "Loading table"`…) – välität käännetyt merkkijonot `useTranslations(...)` stä aina, kun pakkauksen komponentti hahmontaa tekstiä.
-4. Tailwind-apuohjelmat voittaa sarjan komponenttiluokat (sarja ilmoittaa `@layer theme, base, components, utilities` ja sen säännöt elävät `components` ssä) — käytä apuohjelmia väliin ja asetteluihin, älä värjätä sarjan osia.
-5. Otsikot: `.ci-heading` sivujen ja osien otsikoille; `.ci-dashboard-display` vain suurelle, harvoille näyttöteksteille, kuten virhesivun tilakoodille. Molemmat käyttävät Switzeriä.
-6. `tests/unit/dashboard-kit-sweep.test.ts` suojelee sarjan käyttöönottoa: ei materiaalin ligatuuriväliä `src/app` tai `src/shared/components` alla; kojelautapuussa (`src/app/(dashboard)` ja `src/shared/components`) ei raaka- `<select>`, `<textarea>` tai `<table>` eikä käsin rullattu `role="dialog"` lueteltujen poikkeusten ulkopuolella ( `Select` sovittimen alkuperäinen haara, `RequestLoggerDetail`); jokainen raaka `<button>` tai `<input>` tarvitsee kommentin, joka sisältää `kit-exception:` (syyn kanssa), joka päättyy enintään 3 riviä sen yläpuolelle; paletin sävyjä ja `dark:` -variantteja vain testiluetteloissa olevissa tiedostoissa.
-7. Tarkista molemmat teemat ja 390 pikselin näkymä ennen PR (kuvakaappaukset); `tests/e2e/a11y.spec.ts` juoksee kirveen.
+1. Käytä aina tokeneita, älä literaaleja. Tarkoituksella säilytetyt poikkeukset: aina tumma konsolipääte ja
+   `STATUS_HEX` (`src/shared/constants/statusColors.ts`), kitin tilapalettia vastaava ratkaistu hex-arvo
+   kutsujille, jotka tarvitsevat kirjaimellisen hex-arvon. Kategoriset paletit eivät enää ole poikkeus:
+   ne käyttävät kitin kahdeksaa kaaviotokenia (`--color-chart-1..8` sekä `-ink`/`-subtle`) kitin
+   sarjajärjestyksessä `src/shared/utils/categoricalPalette.ts`-tiedoston kautta ja reititysstrategioiden
+   osalta `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`-tiedoston kautta; ReactFlow-reunat ja
+   orkestrointikangas lukevat teeman huomioivia `--orch-status-*`-muuttujia
+   (`src/shared/components/flow/edgeStyles.ts`).
+2. Älä koskaan muokkaa tiedostoja `packages/ui-kit/src` käsin: synkronoi komennolla
+   `scripts/dev/sync-ui-kit.sh <commit>`; commitia edeltävä tarkistus `npm run check:ui-kit-snapshot`
+   (`.husky/pre-commit`) epäonnistuu, jos yksikin tavu eroaa kiinnitetystä upstream-commitista (se
+   ohitetaan varoituksella, jos upstream-klooni `UI_KIT_CLONE` tai `_references/cheaper-inference-ui-kit`
+   puuttuu). Jos kitistä puuttuu jotakin, kierrä puute adapterissa tai näkymässä ja pyydä sitä
+   upstreamista.
+3. Kitin tekstien oletusarvot ovat englanniksi (`label = "Loading"`, `loadingLabel = "Loading table"`…) — välitä
+   käännetyt merkkijonot kohteesta `useTranslations(...)` aina, kun kit-komponentti näyttää tekstiä.
+4. Tailwind-apuohjelmat ohittavat kit-komponenttien luokat (kit määrittää
+   `@layer theme, base, components, utilities` ja sen säännöt sijaitsevat `components`-tasolla) — käytä
+   apuohjelmia välistykseen ja asetteluun, älä kit-komponenttien värityksen muuttamiseen.
+5. Otsikot: käytä `.ci-heading`-luokkaa sivu- ja osio-otsikoille; `.ci-dashboard-display`-luokkaa
+   ainoastaan suurelle ja harvalle näyttötekstille, kuten virhesivun tilakoodille. Molemmat käyttävät Switzer-fonttia.
+6. `tests/unit/dashboard-kit-sweep.test.ts` valvoo kitin käyttöönottoa: ei Material-ligatuuria sisältäviä
+   span-elementtejä `src/app`- tai `src/shared/components`-hakemistossa; dashboard-puussa
+   (`src/app/(dashboard)` ja `src/shared/components`) ei raakaa `<select>`-, `<textarea>`- tai `<table>`-elementtiä
+   eikä käsin toteutettua `role="dialog"`-elementtiä lueteltujen poikkeusten ulkopuolella
+   (`Select`-adapterin natiivihaara, `RequestLoggerDetail`); jokaisella siellä olevalla raakalla `<button>`- tai
+   `<input>`-elementillä on oltava kommentti, joka sisältää `kit-exception:`-tekstin (sekä syyn) enintään kolme
+   riviä sen yläpuolella; palettien sävyt ja `dark:`-variantit ovat sallittuja vain testin luettelemissa
+   tiedostoissa.
+7. Varmista molemmat teemat ja 390 pikselin näkymä PR:ää edeltäen (kuvakaappaukset); `tests/e2e/a11y.spec.ts`
+   suorittaa axen.
 
 ## 3. Näytön lisääminen
 

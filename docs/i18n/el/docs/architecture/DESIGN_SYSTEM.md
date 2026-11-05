@@ -6,26 +6,128 @@
 
 > **Κατάσταση:** το ταμπλό είναι χτισμένο πάνω στο** Κιτ Keak CI UI** (`@keak/cheaper-inference-ui-kit`), πωλείται ως ο χώρος εργασίας `packages/ui-kit` (`@omniroute/ui-kit`; το στιγμιότυπο ανάντη είναι καρφιτσωμένο σε `packages/ui-kit/UPSTREAM.md` και προστατεύεται από `npm run check:ui-kit-snapshot`). Το φως είναι το κανονικό θέμα. η προεπιλεγμένη προτίμηση είναι `system`. Η προεπιλεγμένη παλέτα είναι του κιτ** Εκδόσεις** εμφάνιση (ζεστά ουδέτερα χαρτί και χάλκινη προφορά `#e5ac82`, `packages/ui-kit/src/ci-editions.css`); Ρυθμίσεις → Εμφάνιση → Η χρωματική παλέτα προσφέρει** Κλασσικός** , τα κουπόνια της βάσης του κιτ με την προφορά lime. Το Switzer είναι η ενιαία οικογένεια για UI, οθόνη και κείμενο κώδικα (`--ci-font-ui`; `--ci-font-display` και `--ci-font-mono` επιλύονται σε αυτό), που φιλοξενείται από το ίδιο το κιτ (`packages/ui-kit/src/ci-fonts.css`, εισαγωγή από `ci-tokens.css`). Σενάρια Η Switzer στερείται γραφής με γλύφο (`src/app/globals.css`): Inter για κυριλλική, ελληνική και βιετναμέζικη γραφή και, μόνο κάτω από `html[dir="rtl"]`, Vazirmatn για αραβική γραφή. Κάθε εικονίδιο είναι ένα γλυφό Lucide.
 
-## 1. Εκεί που ζουν τα πράγματα
+## 1. Πού βρίσκονται τα πράγματα
 
-- **Εργαλειοθήκη.** `packages/ui-kit/src` είναι ένα byte-for-byte αντίγραφο του upstream `src/` στο commit καρφιτσωμένο στο `packages/ui-kit/UPSTREAM.md` (το οποίο επίσης καταγράφει την εξουσιοδότηση άδειας χρήσης). `PATCHES.md` παραθέτει τοπικές ενημερώσεις κώδικα (καμία). Καταναλώνεται ως πηγή, χωρίς κατασκευή: `next.config.mjs` το μετατρέπει και `tsconfig.json` αντιστοιχίζει `@omniroute/ui-kit` → `packages/ui-kit/src` και `@omniroute/ui-kit/*` → `packages/ui-kit/src/*` (`vitest.config.ts` και `vitest.mcp.config.ts` φέρουν το ίδιο ψευδώνυμο). Εισαγάγετε ένα στοιχείο κιτ από την υποδιαδρομή του (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…), ποτέ μέσω του βαρελιού `@omniroute/ui-kit` : η κάννη τραβά κάθε στοιχείο (συμπεριλαμβανομένου του εργαλείου επιλογής ημερομηνίας) σε κάθε εισαγωγέα. Το φύλλο στυλ κιτ εισέρχεται μέσω `src/app/globals.css` (`@import "../../packages/ui-kit/src/ci-styles.css"`, το πλήρες φύλλο: ο πυρήνας `ci-ui.css` συν κάθε οικογένεια μοτίβων).
-- **Μαρτυρίες.** `packages/ui-kit/src/ci-tokens.css` δηλώνει τα διακριτικά `--ci-*`. `src/app/globals.css` τα γεφυρώνει με τα ονόματα OmniRoute παλαιού τύπου (`--color-*`, `--radius-*`, `--font-sans`/`--font-mono`, `--table-*`, `--orch-status-*`, `--color-fd-*`), έτσι ώστε τα υπάρχοντα βοηθητικά `var(--color-*)` να διαβάζουν και τα βοηθητικά προγράμματα Tailwind συνεχίζουν να λειτουργούν. Ο νέος κώδικας χρησιμοποιεί τα βοηθητικά προγράμματα Tailwind (`bg-surface`, `text-text-muted`, `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) ή κλάσεις κιτ — ποτέ δεκαεξαδική τιμή (`tests/unit/design-kit-bridge.test.ts` επιβάλλει τη γέφυρα). `text-primary` επιλύει σε `--color-primary-ink` μέσω `--text-color-primary`, έτσι το κύριο κείμενο παραμένει ευανάγνωστο ενώ `bg-primary`/`border-primary` διατηρεί την επιφάνεια τονισμού: κάτω από τις Εκδόσεις είναι το `--ci-color-accent-active` του κιτ (το βαθύ χάλκινο `#99562f` στο φως, η χάλκινη έμφαση στο σκοτάδι). κάτω από Κλασικό, lime-800 στο φως και την προφορά lime στο σκοτάδι. Η σειρά γραφημάτων χρησιμοποιεί `--color-chart-1` … `--color-chart-5`.
-- **Θέματα.** `<html className="ci-theme">` (`src/app/layout.tsx`) επιλέγει το έγγραφο στο θέμα του κιτ. Η προτίμηση είναι `light`, `dark` ή `system` (`THEME_CONFIG.defaultTheme = "system"` στο `src/shared/constants/appConfig.ts`, `system` ακολουθεί `prefers-color-scheme`). `applyTheme()` στο `src/store/themeStore.ts` (που αντικατοπτρίζεται με `THEME_BOOT_SCRIPT`, ενσωματωμένο σε `src/app/layout.tsx`, το οποίο τρέχει πριν από την ενυδάτωση) θέτει `data-theme="dark"|"light"` και εναλλάσσει την κατηγορία `.dark` στο `<html>` μαζί. Το σετ σκοτεινών κουπονιών του κιτ πληκτρολογείται στο `data-theme="dark"` (`packages/ui-kit/src/ci-tokens.css`). Οι σκοτεινές παρακάμψεις του δικού του OmniRoute(το μπλοκ `.dark` στο `globals.css`) και το κλειδί βοηθητικών προγραμμάτων παλαιού τύπου Tailwind `dark:` στην κλάση `.dark`. Δεν υπάρχουν προεπιλογές χρωμάτων έμφασης: η έμφαση προέρχεται πάντα από το κιτ και μια σταθερή προεπιλογή από παλαιότερη έκδοση απορρίπτεται όταν φορτώνεται το κατάστημα.
-- **Παλέτες.** Δύο, και τα δύο από το κιτ (`src/shared/constants/appearancePalette.ts`): `editions`, η προεπιλογή και `classic`. Το Editions είναι το χαρακτηριστικό `data-ci-appearance="editions"` του κιτ στο `<html>`, το οποίο `ci-editions.css` (που εισάγεται από `ci-ui.css`) συνδυάζεται με `data-theme`; Κλασικό είναι η απουσία της ιδιότητας. Ο διακομιστής διάταξης ρίζας αποδίδει το χαρακτηριστικό, έτσι ένας επισκέπτης χωρίς τίποτα αποθηκευμένο (ή χωρίς JS) λαμβάνει Εκδόσεις σε κάθε επιφάνεια πίνακα ελέγχου —, σύνδεση, `/status`, σελίδες σφαλμάτων, `/docs` και PWA. Η επιλογή παραμένει δίπλα στο θέμα στο ίδιο κατάστημα `theme` (`palette`, `setPalette()`, `applyPalette()` σε `src/store/themeStore.ts`) και εφαρμόζεται πριν από τη βαφή από `THEME_BOOT_SCRIPT` (`src/shared/utils/themeBootScript.ts`, ενσωματωμένο στο `<head>` της διάταξης ), το οποίο αφαιρεί το χαρακτηριστικό μόνο όταν η αποθηκευμένη παλέτα είναι `"classic"`. `src/app/global-error.tsx`, εκτός της διάταξης ρίζας, το εφαρμόζει από το ίδιο κατάστημα. Μην τοποθετείτε `data-ci-appearance` σε κανένα άλλο στοιχείο: το κιτ το ταιριάζει με `html:root:has([data-ci-appearance="editions"])`, έτσι ένας απόγονος θα άλλαζε ολόκληρο το έγγραφο. Η παραλλαγή του Editions `data-ci-editions-variant="landing"` προορίζεται για σελίδες μάρκετινγκ και όχι για τον πίνακα ελέγχου. Πρόγραμμα περιήγησης chrome: ο διακομιστής αποδίδει την προεπιλογή, Εκδόσεις, σε `viewport.themeColor` (μία ετικέτα ανά `prefers-color-scheme`) και το μανιφέστο ιστού — `PWA_THEME_COLORS` στο `src/shared/constants/pwaThemeColors.ts`, τον μοναδικό καθρέφτη των Εκδόσεων `--ci-color-background` (`#f3f1e9` / `#11120f`), καρφιτσωμένο στο `ci-editions.css` από `tests/unit/pwa-theme-colors.test.ts`. Στη συνέχεια, το ζωντανό `<meta name="theme-color">` ακολουθεί την αποθηκευμένη παλέτα και τη λειτουργία: `THEME_BOOT_SCRIPT` ξαναγράφει τις ετικέτες πριν από τη ζωγραφική και οι ενέργειες του χώρου αποθήκευσης θεμάτων το κάνουν σε κάθε αλλαγή (`resolveThemeColor()` / `applyThemeColor()` στο `src/shared/utils/themeColorMeta.ts`, με `CLASSIC_PAGE_BACKGROUND` ανάγνωση από το `ciTokens` του κιτ). Ένα ρητό θέμα light/dark θέτει κάθε ετικέτα σε αυτήν τη λειτουργία. `system` διατηρεί ένα χρώμα ανά σχέδιο. Το μανιφέστο παραμένει Εκδόσεις: λαμβάνεται μία φορά ανά εγκατάσταση, χωρίς την προτίμηση. Το Μονακό διαβάζει τα χρώματά του από έναν ανιχνευτή (`monacoKitTheme.ts`). κάτω από τις Εκδόσεις, το probe read αναστρέφει τη ρίζα `data-theme` για ένα σύγχρονο πέρασμα, επειδή το κιτ επιλύει τις εκδόσεις light/dark από τη ρίζα.
-- **Εξαρτήματα (προσαρμογείς).** Το `src/shared/components/index.tsx` διατηρεί το συστατικό OmniRoute API (ίδια ονόματα, προεπιλεγμένες εξαγωγές και στηρίγματα) και τα πρωτόγονα πίσω από αυτό είναι προσαρμογείς πάνω από το κιτ: φόρμες (`Button`, `Input`, `Textarea`, `Checkbox`, `Select`, `Toggle`, `Badge`, `Card`), επικαλύψεις και ανατροφοδότηση (`Modal`,`ConfirmModal`, `Tooltip`, `EmptyState` `Loading`), δομή (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) και πίνακες (`DataTable` `InfoTooltip` `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`) `NotificationToast` `danger` προσαρμογέας εισάγει `destructive` στοιχείο κιτ κατά `--ci-button-primary-*` και `warning` τα `--ci-color-accent-foreground` `default` `.ci-button--warning` `outline` — `Button variant="primary"` Οι κανόνες `.ci-button--warning` και `.ci-badge[data-tone]` στο τέλος του `globals.css` (`@layer components`) είναι επεκτάσεις OmniRoute πάνω από τις κατηγορίες κιτ. `tests/unit/ui/adapters/*.test.tsx` καρφιτσώστε κάθε προσαρμογέα.
-- **Κέλυφος.** `src/app/(dashboard)/layout.tsx` αποδίδει `DashboardLayout`, το οποίο αποδίδει `src/shared/components/layouts/DashboardShell.tsx`: το κιτ `SidebarProvider` / `Sidebar` / `SidebarInset` (`packages/ui-kit/src/sidebar.tsx`), με τη λογική πλοήγησης του OmniRoute στο `src/shared/components/Sidebar.tsx`. Ένας σύνδεσμος "μετάβαση στο περιεχόμενο" στο `#main-content` είναι το πρώτο στοιχείο με δυνατότητα εστίασης. `src/shared/components/Header.tsx` κρατά το κιτ `SidebarTrigger` (η μόνη εναλλαγή πλαϊνής γραμμής του κελύφους), το Keak `ProductSwitcher` και το άνοιγμα παλέτας εντολών. Εμφανίζει τον τίτλο της διαδρομής μόνο ενώ κανένα κιτ `PageHeader` (`.ci-page-header`) δεν είναι τοποθετημένο μέσα στο `#main-content`, επομένως μια σελίδα με το δικό της `PageHeader` έχει ένα μόνο `h1`. `src/shared/components/CommandPalette.tsx` είναι ένα κιτ `Dialog`.
-- **εικονίδια.** `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) επιλύει το όνομα (το λεξιλόγιο Material Symbols που χρησιμοποιούν οι οθόνες) μέσω `ICON_MAP` (`src/shared/constants/iconMap.ts`) σε ένα γλυφό Lucide. Η γραμματοσειρά και το πακέτο Material Symbols έχουν εξαφανιστεί: ένα όνομα που λείπει από τον χάρτη αποδίδει ένα ουδέτερο σύμβολο κράτησης θέσης (`data-icon-missing="true"`) και καταγράφει μια προειδοποίηση κονσόλας εκτός παραγωγής. `npm run gen:icon-map` εκτυπώνει τα ονόματα σε χρήση που λείπουν από τον χάρτη (`tests/unit/icon-map-coverage.test.ts` αποτυγχάνει σε οποιοδήποτε όνομα χωρίς εικονίδιο Lucide. `tests/unit/icon-map-object-values.test.ts` καλύπτει ονόματα που είναι αποθηκευμένα σε αντικείμενα αναζήτησης). `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` ξαναγράφει κυριολεκτικά `<span className="material-symbols-outlined">` εκτείνεται σε `<Icon>`.
-- **Μάρκα.** `src/shared/components/OmniRouteLogo.tsx` αναδιπλώνει το κιτ: η προεπιλεγμένη εξαγωγή `OmniRouteLogo` αποδίδει `ProductIcon product="omniroute" variant="glyph"` (ενσωματωμένο SVG, `basePath` -safe) και `OmniRouteLockup` αποδίδει `ProductLockup product="omniroute"` (προσβάσιμο όνομα "Keak OmniRoute") ή, για χειριστές λευκής ετικέτας, το δικό τους `name`/`logoSrc`. Οι προορισμοί του εναλλάκτη προϊόντων ζουν σε `src/shared/constants/keakProducts.ts` (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). Οι αυτόνομες οθόνες — `src/app/login/page.tsx`, `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`, `src/app/offline/page.tsx`, `src/app/not-found.tsx` και `src/shared/components/ErrorPageScaffold.tsx` — δείχνουν το κλείδωμα. `tests/unit/brand-pages-static.test.ts` το φυλάει.
+- **Κιτ.** Το `packages/ui-kit/src` είναι byte-for-byte αντίγραφο του upstream `src/` στο commit που έχει οριστεί στο
+  `packages/ui-kit/UPSTREAM.md` (όπου καταγράφεται επίσης η άδεια χρήσης)· το `PATCHES.md` παραθέτει τις τοπικές
+  επιδιορθώσεις (καμία). Χρησιμοποιείται ως πηγαίος κώδικας, χωρίς build: το `next.config.mjs` το μεταγλωττίζει
+  και το `tsconfig.json` αντιστοιχίζει το `@omniroute/ui-kit` → `packages/ui-kit/src` και το
+  `@omniroute/ui-kit/*` → `packages/ui-kit/src/*` (τα `vitest.config.ts` και `vitest.mcp.config.ts` περιέχουν
+  το ίδιο alias). Εισάγετε ένα στοιχείο του κιτ μέσω του subpath του (`@omniroute/ui-kit/table`,
+  `@omniroute/ui-kit/page-header`…), ποτέ μέσω του barrel `@omniroute/ui-kit`: το barrel εισάγει κάθε στοιχείο
+  (συμπεριλαμβανομένου του date picker) σε κάθε importer. Το stylesheet του κιτ εισάγεται μέσω του
+  `src/app/globals.css` (`@import "../../packages/ui-kit/src/ci-styles.css"`, το πλήρες stylesheet: το βασικό
+  `ci-ui.css` συν κάθε οικογένεια patterns).
+- **Tokens.** Το `packages/ui-kit/src/ci-tokens.css` δηλώνει τα `--ci-*` tokens· το `src/app/globals.css`
+  τα συνδέει με τα παλαιότερα ονόματα του OmniRoute (`--color-*`, `--radius-*`, `--font-sans`/`--font-mono`,
+  `--table-*`, `--orch-status-*`, `--color-fd-*`), ώστε οι υπάρχουσες αναφορές `var(--color-*)` και τα
+  βοηθητικά του Tailwind να συνεχίζουν να λειτουργούν. Ο νέος κώδικας χρησιμοποιεί τα βοηθητικά του Tailwind
+  (`bg-surface`, `text-text-muted`, `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) ή τις
+  κλάσεις του κιτ — ποτέ δεκαεξαδική τιμή (`tests/unit/design-kit-bridge.test.ts` επιβάλλει τη γέφυρα).
+  Το `text-primary` επιλύεται στο `--color-primary-ink` μέσω του `--text-color-primary`, ώστε το κύριο κείμενο
+  να παραμένει ευανάγνωστο, ενώ τα `bg-primary`/`border-primary` διατηρούν την επιφάνεια έμφασης: στο Editions
+  είναι το `--ci-color-accent-active` του κιτ (το βαθύ χάλκινο `#99562f` στη φωτεινή λειτουργία, η χάλκινη
+  έμφαση στη σκοτεινή)· στο Classic είναι το lime-800 στη φωτεινή λειτουργία και η lime έμφαση στη σκοτεινή.
+  Οι σειρές γραφημάτων χρησιμοποιούν τα `--color-chart-1` … `--color-chart-8`, καθεμία με ένα ασφαλές για
+  κείμενο `--color-chart-N-ink` και μια αδιαφανή απόχρωση chip `--color-chart-N-subtle`, αντιστοιχισμένες
+  σύμφωνα με τη σειρά σειρών του κιτ (`ciChartSeriesOrder`).
+- **Θέματα.** Το `<html className="ci-theme">` (`src/app/layout.tsx`) ενεργοποιεί το θέμα του κιτ για το
+  έγγραφο. Η προτίμηση είναι `light`, `dark` ή `system` (`THEME_CONFIG.defaultTheme = "system"` στο
+  `src/shared/constants/appConfig.ts`· το `system` ακολουθεί το `prefers-color-scheme`). Η `applyTheme()` στο
+  `src/store/themeStore.ts` (με αντίστοιχο το `THEME_BOOT_SCRIPT`, ενσωματωμένο στο `src/app/layout.tsx`, το οποίο
+  εκτελείται πριν από το hydration) ορίζει το `data-theme="dark"|"light"` και ενεργοποιεί ή απενεργοποιεί
+  ταυτόχρονα την κλάση `.dark` στο `<html>`. Το σύνολο dark tokens του κιτ βασίζεται στο
+  `data-theme="dark"` (`packages/ui-kit/src/ci-tokens.css`)· οι δικές τους dark παρακάμψεις του OmniRoute
+  (το block `.dark` στο `globals.css`) και τα παλαιότερα βοηθητικά `dark:` του Tailwind βασίζονται στην κλάση
+  `.dark`. Δεν υπάρχουν προκαθορισμένες accent colors: η έμφαση προέρχεται πάντα από το κιτ και μια
+  αποθηκευμένη προεπιλογή από παλαιότερο build απορρίπτεται κατά τη φόρτωση του store.
+- **Παλέτες.** Δύο, και οι δύο από το κιτ (`src/shared/constants/appearancePalette.ts`): `editions`, η
+  προεπιλεγμένη, και `classic`. Το Editions είναι το attribute `data-ci-appearance="editions"` του κιτ στο
+  `<html>`, το οποίο το `ci-editions.css` (εισαγόμενο από το `ci-ui.css`) συνδυάζει με το `data-theme`· το
+  Classic είναι η απουσία του attribute. Το root layout αποδίδει το attribute στον server, επομένως ένας
+  επισκέπτης χωρίς αποθηκευμένη επιλογή (ή χωρίς JS) λαμβάνει Editions σε κάθε επιφάνεια — dashboard, login,
+  `/status`, σελίδες σφαλμάτων, `/docs` και το PWA. Η επιλογή αποθηκεύεται δίπλα στο θέμα στο ίδιο store
+  `theme` (`palette`, `setPalette()`, `applyPalette()` στο `src/store/themeStore.ts`) και εφαρμόζεται πριν
+  από το paint από το `THEME_BOOT_SCRIPT` (`src/shared/utils/themeBootScript.ts`, ενσωματωμένο στο
+  `<head>` του layout), το οποίο αφαιρεί το attribute μόνο όταν η αποθηκευμένη παλέτα είναι `"classic"`· το
+  `src/app/global-error.tsx`, εκτός του root layout, το εφαρμόζει από το ίδιο store. Μην τοποθετείτε το
+  `data-ci-appearance` σε κανένα άλλο στοιχείο: το κιτ το αντιστοιχίζει με το
+  `html:root:has([data-ci-appearance="editions"])`, επομένως ένας descendant θα άλλαζε ολόκληρο το έγγραφο.
+  Η παραλλαγή Editions `data-ci-editions-variant="landing"` προορίζεται για σελίδες marketing, όχι για το
+  dashboard. Chrome του browser: ο server αποδίδει την προεπιλογή, Editions, στο `viewport.themeColor` (μία
+  ετικέτα ανά `prefers-color-scheme`) και στο web manifest — το `PWA_THEME_COLORS` στο
+  `src/shared/constants/pwaThemeColors.ts`, το μοναδικό αντίγραφο του Editions `--ci-color-background`
+  (`#f3f1e9` / `#11120f`), που είναι δεσμευμένο στο `ci-editions.css` από το
+  `tests/unit/pwa-theme-colors.test.ts`. Το ενεργό `<meta name="theme-color">` ακολουθεί στη συνέχεια την
+  αποθηκευμένη παλέτα και λειτουργία: το `THEME_BOOT_SCRIPT` επανεγγράφει τις ετικέτες πριν από το paint και
+  οι ενέργειες του theme store το κάνουν σε κάθε αλλαγή (`resolveThemeColor()` /
+  `applyThemeColor()` στο `src/shared/utils/themeColorMeta.ts`, με το `CLASSIC_PAGE_BACKGROUND` να διαβάζεται
+  από το `ciTokens` του κιτ). Ένα ρητό θέμα light/dark ορίζει κάθε ετικέτα σε αυτή τη λειτουργία· το `system`
+  διατηρεί ένα χρώμα ανά scheme. Το manifest παραμένει Editions: ανακτάται μία φορά ανά εγκατάσταση, χωρίς
+  την προτίμηση. Το Monaco διαβάζει τα χρώματά του από ένα probe (`monacoKitTheme.ts`)· στο Editions η
+  ανάγνωση του probe αλλάζει το root `data-theme` για ένα σύγχρονο synchronous pass, επειδή το κιτ επιλύει
+  το Editions light/dark από το root.
+- **Στοιχεία (προσαρμογείς).** Το `src/shared/components/index.tsx` διατηρεί το API στοιχείων του OmniRoute
+  (ίδια ονόματα, default exports και props), ενώ τα primitives πίσω από αυτό είναι προσαρμογείς πάνω στο κιτ:
+  φόρμες (`Button`, `Input`, `Textarea`, `Checkbox`, `Select`, `Toggle`, `Badge`, `Card`), overlays και
+  feedback (`Modal`/`ConfirmModal`, `Tooltip`/`InfoTooltip`, `NotificationToast`, `EmptyState`, `Loading`),
+  δομή (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) και πίνακες
+  (`DataTable`, `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`). Ένας προσαρμογέας εισάγει το
+  στοιχείο του κιτ μέσω subpath και αντιστοιχίζει τα παλαιότερα props σε αυτό — για παράδειγμα, το
+  `Button variant="primary"` είναι το κουμπί `default` του κιτ (`--ci-button-primary-*`: η αντίστροφη
+  επιφάνεια στη φωτεινή λειτουργία, η έμφαση με το μελάνι `--ci-color-accent-foreground` στη σκοτεινή),
+  το `danger` είναι `destructive` και το `warning` είναι `outline` μαζί με την επέκταση
+  `.ci-button--warning`. Οι κανόνες `.ci-button--warning` και `.ci-badge[data-tone]` στο τέλος του
+  `globals.css` (`@layer components`) είναι επεκτάσεις του OmniRoute πάνω στις κλάσεις του κιτ.
+  Τα `tests/unit/ui/adapters/*.test.tsx` καθορίζουν κάθε προσαρμογέα.
+- **Κέλυφος.** Το `src/app/(dashboard)/layout.tsx` αποδίδει το `DashboardLayout`, το οποίο αποδίδει το
+  `src/shared/components/layouts/DashboardShell.tsx`: τα στοιχεία `SidebarProvider` / `Sidebar` /
+  `SidebarInset` του kit (`packages/ui-kit/src/sidebar.tsx`), με τη λογική πλοήγησης του OmniRoute στο
+  `src/shared/components/Sidebar.tsx`. Ένας σύνδεσμος «μετάβαση στο περιεχόμενο» προς το `#main-content` είναι το πρώτο στοιχείο στο οποίο μπορεί να μεταφερθεί η εστίαση. Το `src/shared/components/Header.tsx` περιέχει το `SidebarTrigger` του kit (το μοναδικό στοιχείο εναλλαγής του sidebar του κελύφους), το `ProductSwitcher` του Keak και το άνοιγμα της παλέτας εντολών· εμφανίζει τον τίτλο της διαδρομής μόνο όταν δεν έχει προσαρτηθεί `PageHeader` του kit (`.ci-page-header`) μέσα στο `#main-content`, ώστε μια σελίδα με δικό της `PageHeader` να έχει ένα μόνο `h1`. Το `src/shared/components/CommandPalette.tsx` είναι ένα `Dialog` του kit.
+- **Εικονίδια.** Το `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) επιλύει το όνομα (το λεξιλόγιο Material Symbols που χρησιμοποιούν οι οθόνες) μέσω του `ICON_MAP` (`src/shared/constants/iconMap.ts`) σε ένα γλυφικό Lucide. Η γραμματοσειρά και το πακέτο Material Symbols έχουν αφαιρεθεί: ένα όνομα που λείπει από τον χάρτη αποδίδει ένα ουδέτερο γλυφικό-σύμβολο κράτησης θέσης (`data-icon-missing="true"`) και καταγράφει προειδοποίηση στην κονσόλα εκτός παραγωγής.
+  Το `npm run gen:icon-map` εμφανίζει τα ονόματα που χρησιμοποιούνται και λείπουν από τον χάρτη
+  (`tests/unit/icon-map-coverage.test.ts` αποτυγχάνει για οποιοδήποτε όνομα χωρίς εικονίδιο Lucide·
+  το `tests/unit/icon-map-object-values.test.ts` καλύπτει ονόματα αποθηκευμένα σε αντικείμενα αναζήτησης)·
+  το `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` ξαναγράφει τα κυριολεκτικά
+  `<span className="material-symbols-outlined">` σε `<Icon>`.
+- **Επωνυμία.** Το `src/shared/components/OmniRouteLogo.tsx` περιτυλίγει το kit: η προεπιλεγμένη εξαγωγή `OmniRouteLogo`
+  αποδίδει `ProductIcon product="omniroute" variant="glyph"` (ενσωματωμένο SVG, ασφαλές ως προς το `basePath`)
+  και το `OmniRouteLockup` αποδίδει `ProductLockup product="omniroute"` (προσβάσιμο όνομα "Keak OmniRoute") ή, για παρόχους white-label, το δικό τους `name`/`logoSrc`. Οι προορισμοί του product switcher βρίσκονται στο
+  `src/shared/constants/keakProducts.ts` (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). Οι αυτόνομες οθόνες — `src/app/login/page.tsx`, `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`,
+  `src/app/offline/page.tsx`, `src/app/not-found.tsx` και `src/shared/components/ErrorPageScaffold.tsx`
+  — εμφανίζουν το lockup· το `tests/unit/brand-pages-static.test.ts` το διασφαλίζει.
 
 ## 2. Κανόνες
 
-1. Μαρτυρίες, ποτέ κυριολεκτικά. Εξαιρέσεις που διατηρούνται επίτηδες: το πάντα σκοτεινό τερματικό της κονσόλας και `STATUS_HEX` (`src/shared/constants/statusColors.ts`), ο καθρέφτης με λυμένο εξάγωνο της παλέτας κατάστασης κιτ για καλούντες που χρειάζονται κυριολεκτικό εξάγωνο. Οι κατηγορικές παλέτες δεν αποτελούν πλέον εξαίρεση: χρησιμοποιούν τα πέντε διακριτικά γραφημάτων του κιτ (`--color-chart-1..5`) μέσω `src/shared/utils/categoricalPalette.ts` και, για στρατηγικές δρομολόγησης, `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`. Οι άκρες ReactFlow και ο καμβάς ενορχήστρωσης διαβάζουν τις μεταβλητές `--orch-status-*` με επίγνωση του θέματος (`src/shared/components/flow/edgeStyles.ts`).
-2. Μην επιδιορθώνετε ποτέ `packages/ui-kit/src` με το χέρι: συγχρονισμός με `scripts/dev/sync-ui-kit.sh <commit>`; η πύλη pre-commit `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) αποτυγχάνει σε οποιοδήποτε byte που διαφέρει από την καρφιτσωμένη ανάντη δέσμευση (παραλείπεται με μια προειδοποίηση όταν απουσιάζει ο κλώνος ανάντη, `UI_KIT_CLONE` ή `_references/cheaper-inference-ui-kit`). Όταν λείπει κάτι από το κιτ, δουλέψτε το στον προσαρμογέα ή στην οθόνη και ζητήστε το ανάντη.
-3. Οι προεπιλογές κειμένου κιτ είναι Αγγλικά (`label = "Loading"`, `loadingLabel = "Loading table"`…) — περάστε μεταφρασμένες συμβολοσειρές από `useTranslations(...)` κάθε φορά που ένα στοιχείο κιτ αποδίδει κείμενο.
-4. Τα βοηθητικά προγράμματα Tailwind κερδίζουν τις κατηγορίες συστατικών του κιτ (το κιτ δηλώνει `@layer theme, base, components, utilities` και οι κανόνες του ζουν σε `components`) — χρησιμοποιήστε βοηθητικά προγράμματα για την απόσταση και τη διάταξη, όχι για να ξαναχρωματίσετε τα εξαρτήματα του κιτ.
-5. Επικεφαλίδες: `.ci-heading` για τίτλους σελίδων και ενοτήτων. `.ci-dashboard-display` μόνο για μεγάλο, αραιό κείμενο εμφάνισης, όπως ο κωδικός κατάστασης σελίδας σφάλματος. Και οι δύο χρησιμοποιούν Switzer.
-6. `tests/unit/dashboard-kit-sweep.test.ts` προστατεύει την υιοθέτηση του κιτ: δεν υπάρχει άνοιγμα σύνδεσης υλικού κάτω από `src/app` ή `src/shared/components`. στο δέντρο του πίνακα οργάνων (`src/app/(dashboard)` και `src/shared/components`) δεν υπάρχει ακατέργαστο `<select>`, `<textarea>` ή `<table>` και κανένα `role="dialog"` χειροκίνητο εκτός των αναφερόμενων εξαιρέσεων (εγγενής κλάδος του προσαρμογέα `Select`, `RequestLoggerDetail`)· Κάθε ακατέργαστο `<button>` ή `<input>` εκεί χρειάζεται ένα σχόλιο που περιέχει `kit-exception:` (με τον λόγο) που τελειώνει το πολύ 3 γραμμές πάνω από αυτό. αποχρώσεις παλέτας και παραλλαγές `dark:` μόνο στα αρχεία που παραθέτει η δοκιμή.
-7. Επαληθεύστε και τα δύο θέματα και τη θύρα προβολής 390 px πριν από ένα PR (στιγμιότυπα οθόνης). `tests/e2e/a11y.spec.ts` τρέχει τσεκούρι.
+1. Tokens, ποτέ literals. Εξαιρέσεις που διατηρούνται σκόπιμα: το τερματικό της κονσόλας που είναι πάντα σκούρο και το
+   `STATUS_HEX` (`src/shared/constants/statusColors.ts`), το κατοπτρικό resolved-hex της παλέτας
+   κατάστασης του kit για callers που χρειάζονται ένα literal hex. Οι κατηγορικές παλέτες δεν αποτελούν πλέον εξαίρεση:
+   βασίζονται στα οκτώ tokens γραφημάτων του kit (`--color-chart-1..8`, συν τα `-ink`/`-subtle`), με τη
+   σειρά σειρών του kit, μέσω του `src/shared/utils/categoricalPalette.ts` και, για τις στρατηγικές
+   δρομολόγησης, του `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`. Οι ακμές του ReactFlow και ο καμβάς
+   ενορχήστρωσης διαβάζουν τις μεταβλητές `--orch-status-*` που λαμβάνουν υπόψη το θέμα
+   (`src/shared/components/flow/edgeStyles.ts`).
+2. Μην τροποποιείτε ποτέ χειροκίνητα το `packages/ui-kit/src`: συγχρονίστε με το `scripts/dev/sync-ui-kit.sh <commit>`· το
+   pre-commit gate `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) αποτυγχάνει σε οποιοδήποτε byte
+   διαφέρει από το pinned upstream commit (παραλείπει τον έλεγχο με προειδοποίηση όταν απουσιάζει το upstream clone,
+   `UI_KIT_CLONE` ή `_references/cheaper-inference-ui-kit`). Όταν κάτι λείπει από το kit,
+   αντιμετωπίστε το στον adapter ή στην οθόνη και ζητήστε το από το upstream.
+3. Οι προεπιλογές κειμένου του kit είναι στα Αγγλικά (`label = "Loading"`, `loadingLabel = "Loading table"`…) — περάστε μεταφρασμένες
+   συμβολοσειρές από το `useTranslations(...)` κάθε φορά που ένα στοιχείο του kit αποδίδει κείμενο.
+4. Οι βοηθητικές κλάσεις του Tailwind υπερισχύουν των κλάσεων των στοιχείων του kit (το kit δηλώνει
+   `@layer theme, base, components, utilities` και οι κανόνες του βρίσκονται στο `components`) — χρησιμοποιήστε utilities για
+   αποστάσεις και διάταξη, όχι για να αλλάξετε το χρώμα των στοιχείων του kit.
+5. Επικεφαλίδες: `.ci-heading` για τίτλους σελίδων και ενοτήτων· `.ci-dashboard-display` μόνο για μεγάλο, αραιό
+   κείμενο προβολής, όπως ο κωδικός κατάστασης της σελίδας σφάλματος. Και τα δύο χρησιμοποιούν Switzer.
+6. Το `tests/unit/dashboard-kit-sweep.test.ts` διασφαλίζει την υιοθέτηση του kit: κανένα span με ligature Material κάτω από
+   `src/app` ή `src/shared/components`· στο δέντρο του dashboard (`src/app/(dashboard)` και
+   `src/shared/components`) κανένα ακατέργαστο `<select>`, `<textarea>` ή `<table>` και κανένα χειροποίητο
+   `role="dialog"` εκτός από τις καταγεγραμμένες εξαιρέσεις (τον native κλάδο του adapter `Select`,
+   `RequestLoggerDetail`)· κάθε ακατέργαστο `<button>` ή `<input>` εκεί χρειάζεται ένα σχόλιο που περιέχει
+   `kit-exception:` (με την αιτιολόγηση) και να καταλήγει το πολύ 3 γραμμές πάνω από αυτό· οι αποχρώσεις της παλέτας
+   και οι παραλλαγές `dark:` επιτρέπονται μόνο στα αρχεία που παραθέτει το test.
+7. Επαληθεύστε και τα δύο θέματα και το viewport των 390 px πριν από ένα PR (στιγμιότυπα οθόνης)· το `tests/e2e/a11y.spec.ts` εκτελεί
+   το axe.
 
 ## 3. Προσθήκη οθόνης
 

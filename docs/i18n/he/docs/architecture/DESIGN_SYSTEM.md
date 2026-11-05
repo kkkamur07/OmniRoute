@@ -6,26 +6,105 @@
 
 > **סטָטוּס:** לוח המחוונים בנוי על** ערכת Keak CI UI** (`@keak/cheaper-inference-ui-kit`), מסופק כמרחב העבודה `packages/ui-kit` (`@omniroute/ui-kit`; תמונת המצב במעלה הזרם מוצמדת ב- `packages/ui-kit/UPSTREAM.md` ומוגנת על ידי `npm run check:ui-kit-snapshot`). האור הוא הנושא הקנוני; העדפת ברירת המחדל היא `system`. פלטת ברירת המחדל היא של הערכה** מהדורות** מראה (נייר חם נייטרלי ומבטא הנחושת `#e5ac82`, `packages/ui-kit/src/ci-editions.css`); הגדרות → מראה פלטת הצבעים → מציעה** קלַאסִי** , אסימוני הבסיס של הערכה עם מבטא הליים. Switzer היא המשפחה היחידה עבור UI, תצוגה וטקסט קוד (`--ci-font-ui`; `--ci-font-display` ו- `--ci-font-mono` פותרים את זה), מתארחת בעצמה על ידי הערכה עצמה (`packages/ui-kit/src/ci-fonts.css`, מיובא על ידי `ci-tokens.css`). סקריפטים שחסרים לשוויץ נופלים דרך גליף אחר גליף (`src/app/globals.css`): אינטר לקירילית, יוונית וויאטנמית, ורק תחת `html[dir="rtl"]`, Vazirmatn לכתב ערבי. כל אייקון הוא גליף Lucide.
 
-## 1. איפה הדברים חיים
+## 1. היכן נמצאים הדברים
 
-- **קִיט.** `packages/ui-kit/src` הוא עותק בתים-עבור-בייט של ה- `src/` במעלה הזרם ב-commit המוצמד ב- `packages/ui-kit/UPSTREAM.md` (אשר מתעד גם את הרשאת הרישיון); `PATCHES.md` מפרט תיקונים מקומיים (אין). הוא נצרך כמקור, ללא מבנה: `next.config.mjs` מעביר אותו, ו- `tsconfig.json` מפות `@omniroute/ui-kit` → `packages/ui-kit/src` ו- `@omniroute/ui-kit/*` → `packages/ui-kit/src/*` (`vitest.config.ts` ו- `vitest.mcp.config.ts` נושאים את אותו כינוי). ייבא רכיב ערכה לפי תת הנתיב שלו (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…), לעולם לא דרך חבית `@omniroute/ui-kit` : החבית מושכת כל רכיב (כולל בורר התאריכים) לכל יבואן. גיליון הסגנונות של הערכה נכנס דרך `src/app/globals.css` (`@import "../../packages/ui-kit/src/ci-styles.css"`, הגיליון המלא: הליבה `ci-ui.css` פלוס כל משפחת דפוסים).
-- **אסימונים.** `packages/ui-kit/src/ci-tokens.css` מכריז על אסימוני `--ci-*` ; `src/app/globals.css` מגשרת ביניהם לשמות OmniRoute מדור קודם (`--color-*`, `--radius-*`, `--font-sans`/`--font-mono`, `--table-*`, `--orch-status-*`, `--color-fd-*`), כך שה- `var(--color-*)` קורא ו- Tailwind כלים ממשיכים לעבוד. קוד חדש משתמש בכלי השירות Tailwind (`bg-surface`, `text-text-muted`, `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`...) או במחלקות kit — אף פעם לא ערך hex (`tests/unit/design-kit-bridge.test.ts` אוכף את הגשר). `text-primary` נפתר ל- `--color-primary-ink` עד `--text-color-primary`, כך שהטקסט הראשי נשאר קריא בזמן `bg-primary`/`border-primary` שומרים על משטח המבטא: תחת מהדורות זה ה- `--ci-color-accent-active` של הערכה (ה- `#99562f` הנחושת העמוק באור, המבטא הנחושת בחושך); תחת Classic, lime-800 באור ומבטא ליים בחושך. סדרות תרשימים משתמשות ב- `--color-chart-1` … `--color-chart-5`.
-- **ערכות נושא.** `<html className="ci-theme">` (`src/app/layout.tsx`) מצטרפת את המסמך לערכת ערכת הנושא. ההעדפה היא `light`, `dark` או `system` (`THEME_CONFIG.defaultTheme = "system"` ב- `src/shared/constants/appConfig.ts`; `system` אחרי `prefers-color-scheme`). `applyTheme()` ב- `src/store/themeStore.ts` (משתקף ב- `THEME_BOOT_SCRIPT`, מוטבע ב- `src/app/layout.tsx`, שפועל לפני הידרציה) מגדיר `data-theme="dark"|"light"` ומחליף את המחלקה `.dark` ב- `<html>` יחד. ערכת האסימונים האפלים של הערכה ממוקמת על `data-theme="dark"` (`packages/ui-kit/src/ci-tokens.css`); העקיפות האפלות של OmniRoute(בלוק `.dark` ב- `globals.css`) ומפתח השירותים הישן Tailwind `dark:` במחלקה `.dark`. אין הגדרות קבועות מראש של צבעי הדגשה: המבטא תמיד מגיע מהערכה, והגדרה קבועה מראש ממבנה ישן יותר נשמטת כאשר החנות נטענת.
-- **פלטות.** שניים, שניהם מהערכה (`src/shared/constants/appearancePalette.ts`): `editions`, ברירת המחדל, ו- `classic`. מהדורות היא תכונת `data-ci-appearance="editions"` של הערכה על `<html>`, אשר `ci-editions.css` (מיובא על ידי `ci-ui.css`) משלבת עם `data-theme`; קלאסי הוא היעדר התכונה. שרת פריסת השורש מעבד את התכונה, כך שמבקר ללא שום דבר מאוחסן (או ללא JS) מקבל מהדורות בכל לוח מחוונים של —, כניסה, `/status`, דפי שגיאה, `/docs` וה- PWA. הבחירה נמשכת ליד הנושא באותה חנות `theme` (`palette`, `setPalette()`, `applyPalette()` in `src/store/themeStore.ts`) ומיושמת לפני הצביעה על ידי `THEME_BOOT_SCRIPT` (`src/shared/utils/themeBootScript.ts`, מוטבעת ב- `<head>` של הפריסה), מה שמסיר את התכונה רק כאשר הפלטה המאוחסנת היא `"classic"`; `src/app/global-error.tsx`, מחוץ לפריסת השורש, מיישם אותו מאותה חנות. אל תשים `data-ci-appearance` על שום אלמנט אחר: הערכה תואמת אותו ל- `html:root:has([data-ci-appearance="editions"])`, כך שצאצא אחד יחליף את כל המסמך. גרסת Editions `data-ci-editions-variant="landing"` מיועדת לדפים שיווקיים, לא ללוח המחוונים. כרום הדפדפן: השרת מעבד את ברירת המחדל, Editions, ב- `viewport.themeColor` (תג אחד לכל `prefers-color-scheme`) ואת המניפסט האינטרנט — `PWA_THEME_COLORS` ב- `src/shared/constants/pwaThemeColors.ts`, המראה האחת של מהדורות `--ci-color-background` (`#f3f1e9` / `#11120f`), המוצמדות ל- `ci-editions.css` על-ידי `tests/unit/pwa-theme-colors.test.ts`. לאחר מכן, ה- `<meta name="theme-color">` החי עוקב אחר הפלטה והמצב המאוחסנים: `THEME_BOOT_SCRIPT` כותב מחדש את התגים לפני הצבע והפעולות של חנות הנושא עושות זאת בכל שינוי (`resolveThemeColor()` / `applyThemeColor()` ב- `src/shared/utils/themeColorMeta.ts`, עם `CLASSIC_PAGE_BACKGROUND` שנקרא מה- `ciTokens` של הערכה). ערכת נושא מפורשת light/dark מגדירה כל תג למצב זה; `system` שומר על צבע אחד לכל ערכה. המניפסט נשאר מהדורות: הוא מובא פעם אחת בכל התקנה, ללא ההעדפה. מונקו קוראת את צבעיה מתוך בדיקה (`monacoKitTheme.ts`); תחת מהדורות הקריאה של הבדיקה הופכת את השורש `data-theme` למעבר סינכרוני אחד, מכיוון שהערכה פותרת את מהדורות light/dark מהשורש.
-- **רכיבים (מתאמים).** `src/shared/components/index.tsx` שומר על רכיב OmniRoute API אותם שמות, יצוא ברירת מחדל ואביזרים), והפרימיטיביים מאחוריו הם מתאמים על הערכה: טפסים (`Button`, `Input`, `Textarea`, `Checkbox`, `Select`, `Toggle`, `Badge`, `Card`), שכבות ומשוב (`Modal`, `Tooltip` `ConfirmModal` `InfoTooltip` `NotificationToast`, `EmptyState`), מבנה (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs` `Avatar` `Loading` וטבלאות (`DataTable`, `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`). מתאם מייבא את רכיב הערכה לפי תת-נתיב וממפה את האביזרים הישנים עליו — למשל `Button variant="primary"` הוא כפתור kit `default` (`--ci-button-primary-*`: המשטח ההפוך באור, המבטא עם `--ci-color-accent-foreground` ink שלו בחושך), `danger` הוא `destructive`, ו- `warning` הוא `outline` פלוס הרחבה `.ci-button--warning`. כללי `.ci-button--warning` ו- `.ci-badge[data-tone]` בסוף `globals.css` (`@layer components`) הם הרחבות OmniRoute על גבי מחלקות הערכה. הצמד `tests/unit/ui/adapters/*.test.tsx` לכל מתאם.
-- **פָּגָז.** `src/app/(dashboard)/layout.tsx` מעבד `DashboardLayout`, אשר מעבד `src/shared/components/layouts/DashboardShell.tsx`: ערכת `SidebarProvider` / `Sidebar` / `SidebarInset` (`packages/ui-kit/src/sidebar.tsx`), עם היגיון הניווט של OmniRoute ב- `src/shared/components/Sidebar.tsx`. קישור "דלג לתוכן" ל- `#main-content` הוא האלמנט הראשון שניתן להתמקד בו. `src/shared/components/Header.tsx` מחזיק את ערכת `SidebarTrigger` (החלפת סרגל הצד היחיד של המעטפת), את ה-Keak `ProductSwitcher` ואת פותחן לוח הפקודות; הוא מציג את כותרת המסלול רק כאשר אין ערכת `PageHeader` (`.ci-page-header`) מותקנת בתוך `#main-content`, כך שלדף עם `PageHeader` משלו יש `h1` יחיד. `src/shared/components/CommandPalette.tsx` הוא ערכת `Dialog`.
-- **אייקונים.** `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) פותר את השם (אוצר המילים של סמלים החומריים שהמסכים משתמשים בהם) דרך `ICON_MAP` (`src/shared/constants/iconMap.ts`) לגליף Lucide. הגופן והחבילה של Material Symbols נעלמו: שם חסר במפה מציג גליף מציין מיקום ניטרלי (`data-icon-missing="true"`) ומתעד אזהרת קונסולה מחוץ לייצור. `npm run gen:icon-map` מדפיס את השמות בשימוש שחסרים במפה (`tests/unit/icon-map-coverage.test.ts` נכשל בכל שם ללא סמל Lucide; `tests/unit/icon-map-object-values.test.ts` מכסה שמות המאוחסנים באובייקטי חיפוש); `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` משכתב את `<span className="material-symbols-outlined">` המילולי ל- `<Icon>`.
-- **מותג.** `src/shared/components/OmniRouteLogo.tsx` עוטף את הערכה: ברירת המחדל לייצוא `OmniRouteLogo` מעבד `ProductIcon product="omniroute" variant="glyph"` (inline SVG, `basePath` -safe) ו- `OmniRouteLockup` מעבד `ProductLockup product="omniroute"` (שם נגיש "Keak OmniRoute") או, עבור אופרטורים עם תווית לבנה, `name`/`logoSrc` משלהם. יעדי החלפת מוצרים חיים ב- `src/shared/constants/keakProducts.ts` (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). המסכים העצמאיים — `src/app/login/page.tsx`, `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`, `src/app/offline/page.tsx`, `src/app/not-found.tsx` ו- `src/shared/components/ErrorPageScaffold.tsx` — מציגים את הנעילה; `tests/unit/brand-pages-static.test.ts` שומר על זה.
+- **ערכת הכלים.** `packages/ui-kit/src` היא עותק זהה ברמת הבייטים של `src/` במעלה הזרם ב-commit ש-`packages/ui-kit/UPSTREAM.md` מצמיד אליו (הקובץ מתעד גם את הרשאת הרישיון); `PATCHES.md` מפרט תיקונים מקומיים (אין כאלה). היא נצרכת כקוד מקור, ללא build: `next.config.mjs` מבצע לה transpile, ו-`tsconfig.json` ממפה את `@omniroute/ui-kit` → `packages/ui-kit/src` ואת `@omniroute/ui-kit/*` → `packages/ui-kit/src/*` (`vitest.config.ts` ו-`vitest.mcp.config.ts` כוללים את אותו alias). יש לייבא רכיב מהערכה באמצעות תת-הנתיב שלו (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…), ולעולם לא דרך ה-barrel של `@omniroute/ui-kit`: ה-barrel טוען כל רכיב (כולל בורר התאריכים) לכל importer. גיליון הסגנונות של הערכה נכנס דרך `src/app/globals.css`
+  (`@import "../../packages/ui-kit/src/ci-styles.css"`, הגיליון המלא: `ci-ui.css` הליבה בתוספת כל משפחות התבניות).
+- **אסימונים.** `packages/ui-kit/src/ci-tokens.css` מצהיר על האסימונים `--ci-*`; `src/app/globals.css`
+  מגשר ביניהם לבין שמות OmniRoute מדור קודם (`--color-*`, `--radius-*`, `--font-sans`/`--font-mono`,
+  `--table-*`, `--orch-status-*`, `--color-fd-*`), כך שהשימושים הקיימים ב-`var(--color-*)` וכלי העזר של Tailwind ממשיכים לעבוד. קוד חדש משתמש בכלי העזר של Tailwind (`bg-surface`, `text-text-muted`,
+  `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) או במחלקות הערכה — לעולם לא בערך hex
+  (`tests/unit/design-kit-bridge.test.ts` אוכף את הגישור). `text-primary` נפתר ל-`--color-primary-ink` דרך `--text-color-primary`, כך שטקסט ראשי נשאר קריא, בעוד `bg-primary`/`border-primary` שומרים על משטח ההדגשה: תחת Editions זהו
+  `--ci-color-accent-active` של הערכה (נחושת עמוקה `#99562f` במצב בהיר, והדגשת הנחושת במצב כהה); תחת Classic,
+  lime-800 במצב בהיר והדגשת ה-lime במצב כהה. סדרות תרשימים משתמשות ב-`--color-chart-1` … `--color-chart-8`, שלכל אחת מהן `--color-chart-N-ink` בטוח לטקסט ו-`--color-chart-N-subtle` אטום לגוון תג, המוקצות לפי סדר הסדרות של הערכה (`ciChartSeriesOrder`).
+- **ערכות נושא.** `<html className="ci-theme">` (`src/app/layout.tsx`) מצרף את המסמך לערכת הנושא של הערכה.
+  ההעדפה היא `light`, `dark` או `system` (`THEME_CONFIG.defaultTheme = "system"` בתוך
+  `src/shared/constants/appConfig.ts`; `system` פועל בהתאם ל-`prefers-color-scheme`). `applyTheme()` בתוך `src/store/themeStore.ts` (המשתקף על ידי `THEME_BOOT_SCRIPT`, המוטמע בתוך `src/app/layout.tsx` ורץ לפני hydration) מגדיר `data-theme="dark"|"light"` ומחליף יחד את המחלקה `.dark` ב-`<html>`.
+  ערכת האסימונים הכהה של הערכה מבוססת על `data-theme="dark"` (`packages/ui-kit/src/ci-tokens.css`);
+  העקיפות הכהות של OmniRoute עצמה (בלוק `.dark` בתוך `globals.css`) וכלי העזר מדור קודם של Tailwind מסוג `dark:`
+  מבוססים על המחלקה `.dark`. אין ערכות קבועות לצבע הדגשה: צבע ההדגשה מגיע תמיד מהערכה, וערכה קבועה שנשמרה מ-build ישן נמחקת בעת טעינת ה-store.
+- **פלטות.** שתיים, שתיהן מהערכה (`src/shared/constants/appearancePalette.ts`): `editions`, ברירת המחדל, ו-`classic`. Editions היא המאפיין `data-ci-appearance="editions"` של הערכה על `<html>`, שאותו
+  `ci-editions.css` (מיובא על ידי `ci-ui.css`) משלב עם `data-theme`; Classic הוא היעדר המאפיין. פריסת השורש מרנדרת את המאפיין בצד השרת, כך שמבקר שאין לו דבר שמור (או שאין לו JS) מקבל את Editions בכל משטח — לוח הבקרה, דף הכניסה, `/status`, דפי שגיאות, `/docs` וה-PWA. הבחירה נשמרת לצד ערכת הנושא באותו `theme` store (`palette`, `setPalette()`, `applyPalette()` בתוך
+  `src/store/themeStore.ts`) ומוחלת לפני הצביעה על ידי `THEME_BOOT_SCRIPT`
+  (`src/shared/utils/themeBootScript.ts`, המוטמע בתוך ה-`<head>` של הפריסה), שמסיר את המאפיין רק כאשר הפלטה השמורה היא `"classic"`; `src/app/global-error.tsx`, הנמצא מחוץ לפריסת השורש, מחיל אותו מאותו store. אין להציב את `data-ci-appearance` על שום רכיב אחר: הערכה תואמת אותו באמצעות
+  `html:root:has([data-ci-appearance="editions"])`, ולכן צאצא אחד יחליף את המסמך כולו.
+  וריאנט Editions `data-ci-editions-variant="landing"` מיועד לדפי שיווק, לא ללוח הבקרה.
+  כרום הדפדפן: השרת מרנדר את ברירת המחדל, Editions, בתוך `viewport.themeColor` (תג אחד לכל
+  `prefers-color-scheme`) ובמניפסט האינטרנט — `PWA_THEME_COLORS` בתוך
+  `src/shared/constants/pwaThemeColors.ts`, המראה היחיד של `--ci-color-background` של Editions
+  (`#f3f1e9` / `#11120f`), המוצמד ל-`ci-editions.css` על ידי `tests/unit/pwa-theme-colors.test.ts`. תגי
+  `<meta name="theme-color">` החיים עוקבים לאחר מכן אחר הפלטה והמצב השמורים: `THEME_BOOT_SCRIPT` משכתב את
+  התגים לפני הצביעה, והפעולות של theme store עושות זאת בכל שינוי (`resolveThemeColor()` /
+  `applyThemeColor()` בתוך `src/shared/utils/themeColorMeta.ts`, עם `CLASSIC_PAGE_BACKGROUND` שנקרא
+  מתוך `ciTokens` של הערכה). ערכת נושא מפורשת בהירה/כהה מגדירה כל תג למצב הזה; `system` שומר צבע אחד לכל ערכת צבעים. המניפסט נשאר Editions: הוא נשלף פעם אחת בכל התקנה, ללא ההעדפה. Monaco קורא את הצבעים שלו מגשושית (`monacoKitTheme.ts`);
+  תחת Editions קריאת הגשושית הופכת את `data-theme` של השורש למצב ההפוך למעבר סינכרוני יחיד, מכיוון שהערכה פותרת את Editions בהיר/כהה מהשורש.
+- **רכיבים (מתאמים).** `src/shared/components/index.tsx` שומר על ה-API של רכיבי OmniRoute (אותם שמות, יצואי ברירת מחדל ו-props), והפרימיטיבים שמאחוריו הם מתאמים על גבי הערכה: טפסים
+  (`Button`, `Input`, `Textarea`, `Checkbox`, `Select`, `Toggle`, `Badge`, `Card`), שכבות-על ומשוב
+  (`Modal`/`ConfirmModal`, `Tooltip`/`InfoTooltip`, `NotificationToast`, `EmptyState`, `Loading`),
+  מבנה (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) וטבלאות
+  (`DataTable`, `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`). מתאם מייבא את רכיב הערכה לפי תת-הנתיב וממפה את ה-props מדור קודם אליו — לדוגמה, `Button variant="primary"` הוא כפתור ה-`default` של הערכה (`--ci-button-primary-*`: המשטח ההפוך במצב בהיר, ההדגשה עם דיו `--ci-color-accent-foreground` במצב כהה), `danger` הוא `destructive`, ו-`warning` הוא `outline` בתוספת ההרחבה `.ci-button--warning`. כללי `.ci-button--warning` ו-`.ci-badge[data-tone]` בסוף `globals.css` (`@layer components`) הם הרחבות של OmniRoute על גבי מחלקות הערכה.
+  `tests/unit/ui/adapters/*.test.tsx` מקבע כל מתאם.
+- **מעטפת.** `src/app/(dashboard)/layout.tsx` מרנדרת את `DashboardLayout`, אשר מרנדר את
+  `src/shared/components/layouts/DashboardShell.tsx`: את `SidebarProvider` / `Sidebar` /
+  `SidebarInset` של ערכת הכלים (`packages/ui-kit/src/sidebar.tsx`), עם לוגיקת הניווט של OmniRoute בתוך
+  `src/shared/components/Sidebar.tsx`. קישור "דילוג לתוכן" אל `#main-content` הוא הרכיב הראשון שניתן
+  להתמקד בו. `src/shared/components/Header.tsx` מכיל את `SidebarTrigger` של ערכת הכלים (המתג היחיד
+  של הסרגל הצדדי במעטפת), את `ProductSwitcher` של Keak ואת פותח לוח הפקודות; הוא מציג את כותרת
+  המסלול רק כאשר לא מורכב `PageHeader` של ערכת הכלים (`.ci-page-header`) בתוך `#main-content`,
+  כך שלדף עם `PageHeader` משלו יש `h1` יחיד. `src/shared/components/CommandPalette.tsx` הוא
+  `Dialog` של ערכת הכלים.
+- **סמלים.** `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) פותר את השם
+  (אוצר המילים של Material Symbols שבו משתמשים המסכים) באמצעות `ICON_MAP`
+  (`src/shared/constants/iconMap.ts`) לגליף של Lucide. הגופן והחבילה של Material Symbols הוסרו:
+  שם שחסר במפה מרנדר גליף מציין מיקום ניטרלי (`data-icon-missing="true"`) ומתעד אזהרה במסוף
+  מחוץ לסביבת production. `npm run gen:icon-map` מדפיס את השמות שבשימוש ושחסרים במפה
+  (`tests/unit/icon-map-coverage.test.ts` נכשל בכל שם ללא סמל Lucide;
+  `tests/unit/icon-map-object-values.test.ts` מכסה שמות המאוחסנים באובייקטי חיפוש);
+  `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` משכתב רכיבי
+  `<span className="material-symbols-outlined">` מילוליים ל־`<Icon>`.
+- **מותג.** `src/shared/components/OmniRouteLogo.tsx` עוטף את ערכת הכלים: ייצוא ברירת המחדל
+  `OmniRouteLogo` מרנדר `ProductIcon product="omniroute" variant="glyph"` (SVG מוטבע, בטוח
+  לשימוש עם `basePath`) ו־`OmniRouteLockup` מרנדר `ProductLockup product="omniroute"` (שם נגיש
+  "Keak OmniRoute") או, עבור מפעילים במיתוג לבן, את ה־`name`/`logoSrc` שלהם. היעדים של מחליף
+  המוצרים נמצאים בתוך `src/shared/constants/keakProducts.ts`
+  (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). המסכים העצמאיים — `src/app/login/page.tsx`,
+  `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`, `src/app/offline/page.tsx`,
+  `src/app/not-found.tsx` ו־`src/shared/components/ErrorPageScaffold.tsx` — מציגים את הלוגו המשולב;
+  `tests/unit/brand-pages-static.test.ts` מוודא זאת.
 
 ## 2. כללים
 
-1. אסימונים, אף פעם לא מילוליים. חריגים שנשמרו בכוונה: מסוף הקונסולה החשוך תמיד ו- `STATUS_HEX` (`src/shared/constants/statusColors.ts`), מראה המשקסים הפתורים של פלטת סטטוס הערכה למתקשרים הזקוקים ל-hex מילולי. הפלטות הקטגוריות אינן יוצאות דופן יותר: הן רוכבות על חמשת אסימוני התרשים של הערכה (`--color-chart-1..5`) דרך `src/shared/utils/categoricalPalette.ts`, ועבור אסטרטגיות ניתוב, `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`; ReactFlow edges וקנבס התזמור קוראים את משתני `--orch-status-*` המודעים לנושא (`src/shared/components/flow/edgeStyles.ts`).
-2. לעולם אל תתקן `packages/ui-kit/src` ביד: סנכרן עם `scripts/dev/sync-ui-kit.sh <commit>`; שער ה-pre-commit `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) נכשל בכל בייט השונה מה-Commit המוצמד במעלה הזרם (הוא מדלג עם אזהרה כאשר השיבוט במעלה הזרם, `UI_KIT_CLONE` או `_references/cheaper-inference-ui-kit`, נעדר). כאשר הערכה חסרה משהו, עבדו סביבו במתאם או במסך ובקשו זאת במעלה הזרם.
-3. ברירת המחדל של טקסט ערכה היא אנגלית (`label = "Loading"`, `loadingLabel = "Loading table"`...) - העבר מחרוזות מתורגמות מ- `useTranslations(...)` בכל פעם שרכיב ערכה מעבד טקסט.
-4. כלי עזר של Tailwind מנצחים על מחלקות רכיבי ערכה (הערכה מצהירה על `@layer theme, base, components, utilities` והכללים שלה חיים ב- `components`) - השתמש בכלי עזר למרווחים ופריסה, לא כדי לצבוע מחדש את רכיבי ערכה.
-5. כותרות: `.ci-heading` לכותרות עמודים ומדורים; `.ci-dashboard-display` רק עבור טקסט תצוגה גדול ודליל כגון קוד המצב של דף השגיאה. שניהם משתמשים ב-Switzer.
-6. `tests/unit/dashboard-kit-sweep.test.ts` שומר על אימוץ הערכה: אין טווח קשירה חומרי תחת `src/app` או `src/shared/components`; בעץ לוח המחוונים (`src/app/(dashboard)` ו- `src/shared/components`) לא `<select>`, `<textarea>` או `<table>` גולמי ולא `role="dialog"` מגולגל ביד מחוץ לחריגים המפורטים (הענף המקורי של מתאם `Select`, `RequestLoggerDetail`); כל `<button>` או `<input>` גולמיים שם צריכים הערה המכילה `kit-exception:` (עם הסיבה) המסתיימת לכל היותר 3 שורות מעליו; גוונים של פלטה וגרסאות `dark:` רק בקבצים שהבדיקה מפרטת.
-7. אמת את שני הנושאים ואת נקודת התצוגה של 390 פיקסלים לפני PR (צילומי מסך); `tests/e2e/a11y.spec.ts` רץ axe.
+1. טוקנים, לעולם לא ליטרלים. החריגים שנשמרו בכוונה: מסוף הקונסולה שתמיד כהה
+   ו-`STATUS_HEX` (`src/shared/constants/statusColors.ts`), המראה בעל ערכי ההקסה המפוענחים של
+   פלטת הסטטוסים של הערכה עבור צרכנים שזקוקים לערך הקסה ליטרלי. הפלטות הקטגוריות כבר אינן חריגות:
+   הן משתמשות בשמונת טוקני התרשימים של הערכה (`--color-chart-1..8`, בתוספת `-ink`/`-subtle`),
+   לפי סדר הסדרות של הערכה, דרך
+   `src/shared/utils/categoricalPalette.ts` ובאסטרטגיות ניתוב דרך
+   `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`; הקשתות של ReactFlow
+   וקנבס התזמור קוראים את משתני `--orch-status-*` המודעים לערכת הנושא
+   (`src/shared/components/flow/edgeStyles.ts`).
+2. לעולם אין לתקן ידנית את `packages/ui-kit/src`: יש לסנכרן באמצעות
+   `scripts/dev/sync-ui-kit.sh <commit>`; שער ה-pre-commit
+   `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) נכשל בכל בייט
+   ששונה מה-commit המקובע במעלה הזרם (הוא מדלג עם אזהרה כאשר שכפול המקור במעלה הזרם,
+   `UI_KIT_CLONE` או `_references/cheaper-inference-ui-kit`, אינו קיים). כאשר חסר משהו בערכה,
+   יש לעקוף זאת במתאם או במסך ולבקש זאת במעלה הזרם.
+3. ברירות המחדל של טקסטי הערכה הן באנגלית (`label = "Loading"`, `loadingLabel = "Loading table"`…) —
+   יש להעביר מחרוזות מתורגמות מ-`useTranslations(...)` בכל פעם שרכיב ערכה מציג טקסט.
+4. כלי העזר של Tailwind גוברים על מחלקות רכיבי הערכה (הערכה מצהירה על
+   `@layer theme, base, components, utilities` והכללים שלה נמצאים ב-`components`) — יש להשתמש
+   בכלי עזר עבור מרווחים ופריסה, ולא כדי לצבוע מחדש רכיבי ערכה.
+5. כותרות: `.ci-heading` עבור כותרות דפים ומקטעים; `.ci-dashboard-display` רק עבור
+   טקסט תצוגה גדול ודליל, כגון קוד הסטטוס בדף השגיאה. שניהם משתמשים ב-Switzer.
+6. `tests/unit/dashboard-kit-sweep.test.ts` מגן על אימוץ הערכה: אין תגית span של Material ligature תחת
+   `src/app` או `src/shared/components`; בעץ הדשבורד (`src/app/(dashboard)` ו-`src/shared/components`)
+   אין `<select>`, `<textarea>` או `<table>` גולמיים, ואין `role="dialog"` שנכתב ידנית
+   מחוץ לחריגים המפורטים (הענף המקורי של מתאם `Select`,
+   `RequestLoggerDetail`); כל `<button>` או `<input>` גולמי שם דורש הערה המכילה
+   `kit-exception:` (עם הסיבה), המסתיימת לכל היותר 3 שורות מעליו; גווני הפלטה וגרסאות
+   `dark:` מותרים רק בקבצים שהבדיקה מפרטת.
+7. יש לאמת את שתי ערכות הנושא ואת אזור התצוגה ברוחב 390 פיקסלים לפני PR (צילומי מסך);
+   `tests/e2e/a11y.spec.ts` מריץ את axe.
 
 ## 3. הוספת מסך
 

@@ -6,26 +6,122 @@
 
 > **Status:** dasbor dibangun di atas** Keak CI UI Kit** (`@keak/cheaper-inference-ui-kit`), dijual sebagai ruang kerja `packages/ui-kit` (`@omniroute/ui-kit`; snapshot upstream disematkan di `packages/ui-kit/UPSTREAM.md` dan dijaga oleh `npm run check:ui-kit-snapshot`). Terang adalah tema kanonik; preferensi defaultnya adalah `system`. Palet default adalah milik kit** Edisi** penampilan (kertas netral hangat dan aksen tembaga `#e5ac82`, `packages/ui-kit/src/ci-editions.css`); Pengaturan → Penampilan → Penawaran palet warna** Klasik** , token dasar kit dengan aksen kapur. Switzer adalah keluarga tunggal untuk UI, tampilan dan teks kode (`--ci-font-ui`; `--ci-font-display` dan `--ci-font-mono` memutuskan untuk itu), dihosting sendiri oleh kit itu sendiri (`packages/ui-kit/src/ci-fonts.css`, diimpor oleh `ci-tokens.css`). Skrip Switzer tidak memiliki mesin terbang demi mesin terbang (`src/app/globals.css`): Inter untuk Sirilik, Yunani, dan Vietnam dan, hanya di bawah `html[dir="rtl"]`, Vazirmatn untuk aksara Arab. Setiap ikon adalah mesin terbang Lucide.
 
-## 1. Tempat tinggalnya
+## 1. Di mana berbagai hal berada
 
-- **Perlengkapan.** `packages/ui-kit/src` adalah salinan byte demi byte dari `src/` hulu di komit yang disematkan di `packages/ui-kit/UPSTREAM.md` (yang juga mencatat otorisasi lisensi); `PATCHES.md` mencantumkan patch lokal (tidak ada). Ini digunakan sebagai sumber, tanpa build: `next.config.mjs` mentranspilkannya, dan `tsconfig.json` memetakan `@omniroute/ui-kit` → `packages/ui-kit/src` dan `@omniroute/ui-kit/*` → `packages/ui-kit/src/*` (`vitest.config.ts` dan `vitest.mcp.config.ts` membawa alias yang sama). Impor komponen kit berdasarkan subjalurnya (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…), jangan pernah melalui barel `@omniroute/ui-kit` : barel menarik setiap komponen (termasuk pemilih tanggal) ke setiap importir. Stylesheet kit masuk melalui `src/app/globals.css` (`@import "../../packages/ui-kit/src/ci-styles.css"`, sheet lengkap: inti `ci-ui.css` ditambah setiap kelompok pola).
-- **Token.** `packages/ui-kit/src/ci-tokens.css` mendeklarasikan token `--ci-*` ; `src/app/globals.css` menjembataninya ke nama OmniRoute lama (`--color-*`, `--radius-*`, `--font-sans`/`--font-mono`, `--table-*`, `--orch-status-*`, `--color-fd-*`), sehingga `var(--color-*)` yang ada terbaca dan utilitas Tailwind tetap berfungsi. Kode baru menggunakan utilitas Tailwind (`bg-surface`, `text-text-muted`, `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) atau kelas kit — tidak pernah memiliki nilai hex (`tests/unit/design-kit-bridge.test.ts` menegakkan jembatan). `text-primary` memutuskan untuk `--color-primary-ink` melalui `--text-color-primary`, sehingga teks utama tetap dapat dibaca sementara `bg-primary`/`border-primary` mempertahankan aksen permukaan: di bawah Edisi itu adalah `--ci-color-accent-active` kit ( `#99562f` tembaga dalam dalam terang, aksen tembaga dalam gelap); di bawah Klasik, lime-800 dalam terang dan aksen kapur dalam gelap. Seri grafik menggunakan `--color-chart-1` … `--color-chart-5`.
-- **Tema.** `<html className="ci-theme">` (`src/app/layout.tsx`) mengikutsertakan dokumen ke dalam tema kit. Preferensinya adalah `light`, `dark` atau `system` (`THEME_CONFIG.defaultTheme = "system"` di `src/shared/constants/appConfig.ts`; `system` mengikuti `prefers-color-scheme`). `applyTheme()` di `src/store/themeStore.ts` (dicerminkan oleh `THEME_BOOT_SCRIPT`, sebaris di `src/app/layout.tsx`, yang berjalan sebelum hidrasi) menyetel `data-theme="dark"|"light"` dan mengaktifkan kelas `.dark` di `<html>` secara bersamaan. Kumpulan token gelap kit dikunci pada `data-theme="dark"` (`packages/ui-kit/src/ci-tokens.css`); dark override milik OmniRoute(blok `.dark` di `globals.css`) dan kunci utilitas Tailwind `dark:` yang lama pada kelas `.dark`. Tidak ada preset warna aksen: aksen selalu berasal dari kit, dan preset yang bertahan dari versi lama akan dihapus saat penyimpanan dimuat.
-- **Palet.** Dua, keduanya dari kit (`src/shared/constants/appearancePalette.ts`): `editions`, default, dan `classic`. Editions adalah atribut `data-ci-appearance="editions"` kit pada `<html>`, yang `ci-editions.css` (diimpor oleh `ci-ui.css`) digabungkan dengan `data-theme`; Klasik adalah tidak adanya atribut. Server tata letak root merender atribut, sehingga pengunjung yang tidak menyimpan apa pun (atau tanpa JS) mendapatkan Edisi di setiap permukaan — dashboard, login, `/status`, halaman kesalahan, `/docs` dan PWA. Pilihan tetap ada di sebelah tema di penyimpanan `theme` yang sama (`palette`, `setPalette()`, `applyPalette()` di `src/store/themeStore.ts`) dan diterapkan sebelum paint oleh `THEME_BOOT_SCRIPT` (`src/shared/utils/themeBootScript.ts`, sebaris di tata letak `<head>`), yang menghapus atribut hanya jika palet yang disimpan adalah `"classic"`; `src/app/global-error.tsx`, di luar tata letak root, menerapkannya dari toko yang sama. Jangan letakkan `data-ci-appearance` pada elemen lain: kit mencocokkannya dengan `html:root:has([data-ci-appearance="editions"])`, sehingga satu turunan akan mengganti seluruh dokumen. Varian Edisi `data-ci-editions-variant="landing"` ditujukan untuk halaman pemasaran, bukan dasbor. Browser chrome: server merender Edisi default dalam `viewport.themeColor` (satu tag per `prefers-color-scheme`) dan manifes web — `PWA_THEME_COLORS` dalam `src/shared/constants/pwaThemeColors.ts`, satu-satunya cerminan Edisi `--ci-color-background` (`#f3f1e9` / `#11120f`), disematkan ke `ci-editions.css` oleh `tests/unit/pwa-theme-colors.test.ts`. `<meta name="theme-color">` langsung kemudian mengikuti palet dan mode yang disimpan: `THEME_BOOT_SCRIPT` menulis ulang tag sebelum paint dan tindakan toko tema melakukannya pada setiap perubahan (`resolveThemeColor()` / `applyThemeColor()` di `src/shared/utils/themeColorMeta.ts`, dengan `CLASSIC_PAGE_BACKGROUND` dibaca dari `ciTokens` kit). Tema light/dark yang eksplisit menyetel setiap tag ke mode tersebut; `system` menyimpan satu warna per skema. Manifes tetap menjadi Edisi: diambil satu kali per instalasi, tanpa preferensi. Monaco membaca warnanya dari probe (`monacoKitTheme.ts`); di bawah Edisi, pembacaan probe membalik akar `data-theme` untuk satu lintasan sinkron, karena kit menyelesaikan Edisi light/dark dari akar.
-- **Komponen (adaptor).** `src/shared/components/index.tsx` menyimpan komponen OmniRoute API (nama yang sama, ekspor default dan props), dan primitif di belakangnya adalah adaptor di atas kit: formulir (`Button`, `Input`, `Textarea`, `Checkbox`, `Select`, `Toggle`, `Badge`, `Card`), overlay dan umpan balik (`Modal`/`ConfirmModal`, `Tooltip`/`InfoTooltip`, `NotificationToast`, `EmptyState`, `Loading`), struktur (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) dan tabel (`DataTable`, `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`). Adaptor mengimpor komponen kit dengan subjalur dan memetakan props lama ke dalamnya — misalnya `Button variant="primary"` adalah tombol kit `default` (`--ci-button-primary-*`: permukaan terbalik dalam terang, aksen dengan tinta `--ci-color-accent-foreground` dalam gelap), `danger` adalah `destructive`, dan `warning` adalah `outline` ditambah ekstensi `.ci-button--warning`. Aturan `.ci-button--warning` dan `.ci-badge[data-tone]` di akhir `globals.css` (`@layer components`) adalah ekstensi OmniRoute di atas kelas kit. `tests/unit/ui/adapters/*.test.tsx` pin setiap adaptor.
-- **Kerang.** `src/app/(dashboard)/layout.tsx` merender `DashboardLayout`, yang merender `src/shared/components/layouts/DashboardShell.tsx`: kit `SidebarProvider` / `Sidebar` / `SidebarInset` (`packages/ui-kit/src/sidebar.tsx`), dengan logika navigasi OmniRoute di `src/shared/components/Sidebar.tsx`. Tautan "lewati ke konten" ke `#main-content` adalah elemen pertama yang dapat difokuskan. `src/shared/components/Header.tsx` memegang kit `SidebarTrigger` (satu-satunya tombol sidebar shell), Keak `ProductSwitcher` dan pembuka palet perintah; itu hanya menampilkan judul rute ketika tidak ada kit `PageHeader` (`.ci-page-header`) yang dipasang di dalam `#main-content`, sehingga halaman dengan `PageHeader` nya sendiri memiliki satu `h1`. `src/shared/components/CommandPalette.tsx` adalah kit `Dialog`.
-- **Ikon.** `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) menyelesaikan nama (kosakata Simbol Material yang digunakan layar) melalui `ICON_MAP` (`src/shared/constants/iconMap.ts`) menjadi mesin terbang Lucide. Font dan paket Material Symbols hilang: nama yang hilang dari peta menjadikan mesin terbang placeholder netral (`data-icon-missing="true"`) dan mencatat peringatan konsol di luar produksi. `npm run gen:icon-map` mencetak nama-nama yang digunakan yang hilang dari peta (`tests/unit/icon-map-coverage.test.ts` gagal pada nama apa pun tanpa ikon Lucide; `tests/unit/icon-map-object-values.test.ts` mencakup nama yang disimpan dalam objek pencarian); `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` menulis ulang rentang `<span className="material-symbols-outlined">` literal menjadi `<Icon>`.
-- **Merek.** `src/shared/components/OmniRouteLogo.tsx` membungkus kit: ekspor default `OmniRouteLogo` merender `ProductIcon product="omniroute" variant="glyph"` (inline SVG, `basePath` -safe) dan `OmniRouteLockup` merender `ProductLockup product="omniroute"` (nama yang dapat diakses "Keak OmniRoute") atau, untuk operator label putih, `name`/`logoSrc` mereka sendiri. Tujuan peralihan produk berada di `src/shared/constants/keakProducts.ts` (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). Layar mandiri — `src/app/login/page.tsx`, `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`, `src/app/offline/page.tsx`, `src/app/not-found.tsx` dan `src/shared/components/ErrorPageScaffold.tsx` — menunjukkan penguncian; `tests/unit/brand-pages-static.test.ts` menjaganya.
+- **Kit.** `packages/ui-kit/src` adalah salinan byte-per-byte dari upstream `src/` pada commit yang ditetapkan di
+  `packages/ui-kit/UPSTREAM.md` (yang juga mencatat otorisasi lisensi); `PATCHES.md` mencantumkan patch lokal
+  (tidak ada). Kit ini digunakan sebagai source, tanpa build: `next.config.mjs` mentranspilasinya, dan
+  `tsconfig.json` memetakan `@omniroute/ui-kit` → `packages/ui-kit/src` serta `@omniroute/ui-kit/*` →
+  `packages/ui-kit/src/*` (`vitest.config.ts` dan `vitest.mcp.config.ts` memiliki alias yang sama). Impor
+  komponen kit berdasarkan subpath-nya (`@omniroute/ui-kit/table`, `@omniroute/ui-kit/page-header`…), jangan
+  melalui barrel `@omniroute/ui-kit`: barrel tersebut menarik semua komponen (termasuk date picker) ke setiap
+  importer. Stylesheet kit masuk melalui `src/app/globals.css`
+  (`@import "../../packages/ui-kit/src/ci-styles.css"`, stylesheet lengkap: `ci-ui.css` inti serta setiap
+  keluarga pola).
+- **Token.** `packages/ui-kit/src/ci-tokens.css` mendeklarasikan token `--ci-*`; `src/app/globals.css`
+  menjembataninya ke nama OmniRoute lama (`--color-*`, `--radius-*`, `--font-sans`/`--font-mono`,
+  `--table-*`, `--orch-status-*`, `--color-fd-*`), sehingga penggunaan `var(--color-*)` yang sudah ada dan
+  utilitas Tailwind tetap berfungsi. Kode baru menggunakan utilitas Tailwind (`bg-surface`, `text-text-muted`,
+  `border-border`, `text-success`, `bg-success-bg`, `bg-chart-1`…) atau class kit — jangan pernah menggunakan
+  nilai hex (`tests/unit/design-kit-bridge.test.ts` menegakkan bridge ini). `text-primary` mengarah ke
+  `--color-primary-ink` melalui `--text-color-primary`, sehingga teks utama tetap mudah dibaca, sementara
+  `bg-primary`/`border-primary` mempertahankan permukaan aksen: pada Editions, nilainya adalah
+  `--ci-color-accent-active` milik kit (copper tua `#99562f` dalam mode terang, aksen copper dalam mode
+  gelap); pada Classic, lime-800 dalam mode terang dan aksen lime dalam mode gelap. Seri chart menggunakan
+  `--color-chart-1` … `--color-chart-8`, masing-masing dengan `--color-chart-N-ink` yang aman untuk teks dan
+  tint chip buram `--color-chart-N-subtle`, yang ditetapkan berdasarkan urutan seri kit
+  (`ciChartSeriesOrder`).
+- **Tema.** `<html className="ci-theme">` (`src/app/layout.tsx`) mengaktifkan tema kit untuk dokumen.
+  Preferensinya adalah `light`, `dark`, atau `system` (`THEME_CONFIG.defaultTheme = "system"` di
+  `src/shared/constants/appConfig.ts`; `system` mengikuti `prefers-color-scheme`). `applyTheme()` di
+  `src/store/themeStore.ts` (dicerminkan oleh `THEME_BOOT_SCRIPT`, yang disisipkan di
+  `src/app/layout.tsx` dan dijalankan sebelum hidrasi) menetapkan `data-theme="dark"|"light"` dan mengaktifkan
+  class `.dark` pada `<html>` secara bersamaan. Set token gelap kit menggunakan `data-theme="dark"`
+  (`packages/ui-kit/src/ci-tokens.css`); override gelap milik OmniRoute sendiri (blok `.dark` di
+  `globals.css`) dan utilitas Tailwind `dark:` lama menggunakan class `.dark`. Tidak ada preset warna aksen:
+  aksen selalu berasal dari kit, dan preset tersimpan dari build lama akan dihapus saat store dimuat.
+- **Palet.** Ada dua, keduanya dari kit (`src/shared/constants/appearancePalette.ts`): `editions`, sebagai
+  default, dan `classic`. Editions adalah atribut `data-ci-appearance="editions"` milik kit pada `<html>`, yang
+  digabungkan oleh `ci-editions.css` (diimpor oleh `ci-ui.css`) dengan `data-theme`; Classic adalah ketika
+  atribut tersebut tidak ada. Root layout merender atribut ini di server, sehingga pengunjung tanpa apa pun
+  yang tersimpan (atau tanpa JS) mendapatkan Editions pada setiap permukaan — dashboard, login, `/status`,
+  halaman error, `/docs`, dan PWA. Pilihan ini disimpan di samping tema dalam store `theme` yang sama
+  (`palette`, `setPalette()`, `applyPalette()` di `src/store/themeStore.ts`) dan diterapkan sebelum paint oleh
+  `THEME_BOOT_SCRIPT` (`src/shared/utils/themeBootScript.ts`, disisipkan di `<head>` layout), yang menghapus
+  atribut hanya ketika palet tersimpan bernilai `"classic"`; `src/app/global-error.tsx`, yang berada di luar
+  root layout, menerapkannya dari store yang sama. Jangan menempatkan `data-ci-appearance` pada elemen lain:
+  kit mencocokkannya dengan `html:root:has([data-ci-appearance="editions"])`, sehingga satu descendant akan
+  mengubah seluruh dokumen. Varian Editions `data-ci-editions-variant="landing"` ditujukan untuk halaman
+  pemasaran, bukan dashboard. Chrome browser: server merender default, Editions, dalam
+  `viewport.themeColor` (satu tag untuk setiap `prefers-color-scheme`) dan web manifest —
+  `PWA_THEME_COLORS` di `src/shared/constants/pwaThemeColors.ts`, satu-satunya mirror dari
+  `--ci-color-background` Editions (`#f3f1e9` / `#11120f`), yang dipatok ke `ci-editions.css` oleh
+  `tests/unit/pwa-theme-colors.test.ts`. `<meta name="theme-color">` aktif kemudian mengikuti palet dan mode
+  tersimpan: `THEME_BOOT_SCRIPT` menulis ulang tag sebelum paint dan action theme store melakukannya pada setiap
+  perubahan (`resolveThemeColor()` / `applyThemeColor()` di `src/shared/utils/themeColorMeta.ts`, dengan
+  `CLASSIC_PAGE_BACKGROUND` yang dibaca dari `ciTokens` milik kit). Tema light/dark eksplisit menetapkan setiap
+  tag ke mode tersebut; `system` mempertahankan satu warna untuk setiap skema. Manifest tetap Editions:
+  manifest diambil sekali setiap instalasi, tanpa preferensi tersebut. Monaco membaca warnanya dari sebuah probe
+  (`monacoKitTheme.ts`); dalam Editions, pembacaan probe membalik `data-theme` root selama satu proses sinkron,
+  karena kit menentukan Editions light/dark dari root.
+- **Komponen (adapter).** `src/shared/components/index.tsx` mempertahankan API komponen OmniRoute (nama,
+  default export, dan props yang sama), dan primitive di baliknya adalah adapter di atas kit: form
+  (`Button`, `Input`, `Textarea`, `Checkbox`, `Select`, `Toggle`, `Badge`, `Card`), overlay dan feedback
+  (`Modal`/`ConfirmModal`, `Tooltip`/`InfoTooltip`, `NotificationToast`, `EmptyState`, `Loading`),
+  struktur (`Collapsible`, `CollapsibleSection`, `SegmentedControl`, `Breadcrumbs`, `Avatar`) serta tabel
+  (`DataTable`, `FilterBar`, `ColumnToggle`, `FilterPills`, `PresetSlider`). Sebuah adapter mengimpor
+  komponen kit berdasarkan subpath dan memetakan props lama ke dalamnya — misalnya `Button variant="primary"`
+  adalah button `default` milik kit (`--ci-button-primary-*`: permukaan invers dalam mode terang, aksen dengan
+  ink `--ci-color-accent-foreground` miliknya dalam mode gelap), `danger` adalah `destructive`, dan `warning`
+  adalah `outline` ditambah ekstensi `.ci-button--warning`. Aturan `.ci-button--warning` dan
+  `.ci-badge[data-tone]` di bagian akhir `globals.css` (`@layer components`) adalah ekstensi OmniRoute di atas
+  class kit. `tests/unit/ui/adapters/*.test.tsx` mematok setiap adapter.
+- **Shell.** `src/app/(dashboard)/layout.tsx` merender `DashboardLayout`, yang merender
+  `src/shared/components/layouts/DashboardShell.tsx`: `SidebarProvider` / `Sidebar` /
+  `SidebarInset` dari kit (`packages/ui-kit/src/sidebar.tsx`), dengan logika navigasi OmniRoute di
+  `src/shared/components/Sidebar.tsx`. Tautan "lewati ke konten" ke `#main-content` adalah elemen pertama yang dapat difokuskan. `src/shared/components/Header.tsx` berisi `SidebarTrigger` dari kit (satu-satunya toggle sidebar milik shell), `ProductSwitcher` Keak, dan pembuka command palette; komponen ini menampilkan judul rute hanya saat tidak ada `PageHeader` dari kit (`.ci-page-header`) yang terpasang di dalam `#main-content`, sehingga halaman dengan `PageHeader` sendiri memiliki satu `h1`. `src/shared/components/CommandPalette.tsx` adalah `Dialog` dari kit.
+- **Ikon.** `<Icon name="material_name">` (`src/shared/components/Icon.tsx`) menyelesaikan nama tersebut (kosakata Material Symbols yang digunakan layar) melalui `ICON_MAP` (`src/shared/constants/iconMap.ts`) menjadi glyph Lucide. Font dan paket Material Symbols telah dihapus: nama yang tidak ada di dalam map akan merender glyph placeholder netral (`data-icon-missing="true"`) dan mencatat peringatan konsol di luar production.
+  `npm run gen:icon-map` mencetak nama yang digunakan tetapi tidak ada di dalam map
+  (`tests/unit/icon-map-coverage.test.ts` gagal pada nama apa pun yang tidak memiliki ikon Lucide;
+  `tests/unit/icon-map-object-values.test.ts` mencakup nama yang disimpan dalam objek lookup);
+  `scripts/dev/codemod-material-icons.mjs <dir|file>... [--write]` menulis ulang span literal
+  `<span className="material-symbols-outlined">` menjadi `<Icon>`.
+- **Brand.** `src/shared/components/OmniRouteLogo.tsx` membungkus kit: ekspor default `OmniRouteLogo`
+  merender `ProductIcon product="omniroute" variant="glyph"` (SVG inline, aman untuk `basePath`) dan
+  `OmniRouteLockup` merender `ProductLockup product="omniroute"` (nama yang dapat diakses "Keak OmniRoute") atau, untuk operator white-label, `name`/`logoSrc` milik mereka sendiri. Destinasi product switcher berada di `src/shared/constants/keakProducts.ts` (`KEAK_PRODUCT_LINKS`, `KEAK_ACTIVE_PRODUCT`). Layar mandiri — `src/app/login/page.tsx`, `src/app/status/page.tsx`, `src/app/maintenance/page.tsx`,
+  `src/app/offline/page.tsx`, `src/app/not-found.tsx` dan `src/shared/components/ErrorPageScaffold.tsx`
+  — menampilkan lockup; `tests/unit/brand-pages-static.test.ts` menjaganya.
 
 ## 2. Aturan
 
-1. Token, tidak pernah literal. Pengecualian sengaja dibuat: terminal konsol yang selalu gelap dan `STATUS_HEX` (`src/shared/constants/statusColors.ts`), cermin hex terselesaikan dari palet status kit untuk pemanggil yang memerlukan hex literal. Palet kategoris tidak terkecuali lagi: mereka menggunakan lima token grafik kit (`--color-chart-1..5`) melalui `src/shared/utils/categoricalPalette.ts` dan, untuk strategi perutean, `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`; ReactFlow edge dan kanvas orkestrasi membaca variabel `--orch-status-*` yang sadar tema (`src/shared/components/flow/edgeStyles.ts`).
-2. Jangan pernah menambal `packages/ui-kit/src` dengan tangan: sinkronkan dengan `scripts/dev/sync-ui-kit.sh <commit>`; gerbang pra-komit `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) gagal pada byte apa pun yang berbeda dari komit upstream yang disematkan (dilompati dengan peringatan ketika klon upstream, `UI_KIT_CLONE` atau `_references/cheaper-inference-ui-kit`, tidak ada). Jika kit kekurangan sesuatu, selesaikan hal tersebut di adaptor atau layar dan mintalah di bagian hulu.
-3. Default teks kit adalah bahasa Inggris (`label = "Loading"`, `loadingLabel = "Loading table"`…) — meneruskan string yang diterjemahkan dari `useTranslations(...)` setiap kali komponen kit merender teks.
-4. Utilitas tailwind memenangkan kelas komponen kit (kit menyatakan `@layer theme, base, components, utilities` dan aturannya ada di `components`) — gunakan utilitas untuk spasi dan tata letak, bukan untuk mewarnai ulang komponen kit.
-5. Judul: `.ci-heading` untuk judul halaman dan bagian; `.ci-dashboard-display` hanya untuk teks tampilan yang besar dan jarang seperti kode status halaman kesalahan. Keduanya menggunakan Swisser.
-6. `tests/unit/dashboard-kit-sweep.test.ts` menjaga adopsi kit: tidak ada rentang pengikat Material di bawah `src/app` atau `src/shared/components`; di pohon dasbor (`src/app/(dashboard)` dan `src/shared/components`) tidak ada `<select>`, `<textarea>` atau `<table>` mentah dan tidak ada `role="dialog"` linting tangan di luar pengecualian yang terdaftar (cabang asli adaptor `Select`, `RequestLoggerDetail`); setiap `<button>` atau `<input>` mentah perlu komentar yang berisi `kit-exception:` (beserta alasannya) berakhiran paling banyak 3 baris di atasnya; warna palet dan varian `dark:` hanya di file daftar pengujian.
-7. Verifikasi tema dan area pandang 390 px sebelum PR (tangkapan layar); `tests/e2e/a11y.spec.ts` menjalankan kapak.
+1. Gunakan token, jangan pernah literal. Pengecualian yang sengaja dipertahankan: terminal konsol yang selalu gelap dan
+   `STATUS_HEX` (`src/shared/constants/statusColors.ts`), cerminan resolved-hex dari palet
+   status kit untuk pemanggil yang memerlukan hex literal. Palet kategorikal tidak lagi menjadi pengecualian:
+   palet tersebut menggunakan delapan token grafik kit (`--color-chart-1..8`, ditambah `-ink`/`-subtle`), dalam
+   urutan seri kit, melalui `src/shared/utils/categoricalPalette.ts` dan, untuk strategi routing,
+   `src/app/(dashboard)/dashboard/combos/strategyPalette.ts`; edge ReactFlow dan kanvas orkestrasi membaca
+   variabel `--orch-status-*` yang memperhatikan tema (`src/shared/components/flow/edgeStyles.ts`).
+2. Jangan pernah menambal `packages/ui-kit/src` secara manual: sinkronkan dengan `scripts/dev/sync-ui-kit.sh <commit>`; gerbang
+   pre-commit `npm run check:ui-kit-snapshot` (`.husky/pre-commit`) akan gagal jika ada byte apa pun yang
+   berbeda dari commit upstream yang dipatok (gerbang ini dilewati dengan peringatan ketika clone upstream,
+   `UI_KIT_CLONE` atau `_references/cheaper-inference-ui-kit`, tidak tersedia). Jika kit tidak memiliki sesuatu,
+   atasi di adapter atau layar, lalu minta upstream menyediakannya.
+3. Default teks kit menggunakan bahasa Inggris (`label = "Loading"`, `loadingLabel = "Loading table"`…) — teruskan
+   string terjemahan dari `useTranslations(...)` setiap kali komponen kit merender teks.
+4. Utilitas Tailwind lebih diutamakan daripada class komponen kit (kit mendeklarasikan
+   `@layer theme, base, components, utilities` dan aturannya berada di `components`) — gunakan utilitas untuk
+   spacing dan tata letak, bukan untuk mengubah warna komponen kit.
+5. Heading: gunakan `.ci-heading` untuk judul halaman dan bagian; `.ci-dashboard-display` hanya untuk teks
+   tampilan besar dan jarang seperti kode status halaman error. Keduanya menggunakan Switzer.
+6. `tests/unit/dashboard-kit-sweep.test.ts` memastikan adopsi kit: tidak boleh ada span ligatur Material di bawah
+   `src/app` atau `src/shared/components`; di pohon dashboard (`src/app/(dashboard)` dan
+   `src/shared/components`) tidak boleh ada `<select>`, `<textarea>` atau `<table>` mentah dan tidak boleh ada
+   `role="dialog"` yang dibuat manual di luar pengecualian yang tercantum (cabang native adapter `Select`,
+   `RequestLoggerDetail`); setiap `<button>` atau `<input>` mentah di sana memerlukan komentar yang berisi
+   `kit-exception:` (beserta alasannya) yang berakhir maksimal 3 baris di atasnya; rona palet dan varian
+   `dark:` hanya boleh ada di file-file yang dicantumkan oleh pengujian.
+7. Verifikasi kedua tema dan viewport 390 px sebelum PR (gunakan tangkapan layar); `tests/e2e/a11y.spec.ts` menjalankan
+   axe.
 
 ## 3. Menambahkan layar
 
