@@ -1,3 +1,4 @@
+import { resolveResilienceSettings } from "../../src/lib/resilience/settings";
 import { parseDetailedRetryHintFromJsonBody } from "../services/retryAfterJson.ts";
 
 /**
@@ -47,4 +48,31 @@ export async function readRateLimitRetryHintMs(response: Response): Promise<numb
 export async function shouldSkipIntraRetryFor429(response: Response): Promise<boolean> {
   const hintMs = await readRateLimitRetryHintMs(response);
   return hintMs !== null && hintMs > INTRA_RETRY_MAX_HINT_MS;
+}
+
+/**
+ * True when the operator set the request retry count to 0 (`requestRetry`, resolved as
+ * resilienceSettings.waitForCooldown.maxRetries). That setting means "stop at the first
+ * 429": a rate limit from the provider goes straight back to the client, never resent to
+ * the same URL, a fallback URL, a sibling account or another model. Pure, for callers
+ * that already hold the settings record.
+ */
+export function isStopAtFirstRateLimitSettings(
+  settings: Record<string, unknown> | null | undefined
+): boolean {
+  return resolveResilienceSettings(settings).waitForCooldown.maxRetries === 0;
+}
+
+/**
+ * Settings-backed variant for the executor, which does not receive the settings record.
+ * Read only after a 429 arrived, so the success path never pays for it. A failed settings
+ * read keeps today's behaviour (false).
+ */
+export async function isStopAtFirstRateLimit(): Promise<boolean> {
+  try {
+    const { getCachedSettings } = await import("@/lib/db/readCache");
+    return isStopAtFirstRateLimitSettings(await getCachedSettings());
+  } catch {
+    return false;
+  }
 }

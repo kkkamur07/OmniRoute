@@ -37,7 +37,7 @@ import { estimateTokens } from "@omniroute/open-sse/services/contextManager.ts";
 import { getCombo, getComboForModel, getModelInfo } from "../services/model";
 import { stripContextWindowSuffix } from "@omniroute/open-sse/services/model.ts";
 import { resolveBareModelToConnectionDefault } from "@omniroute/open-sse/services/model.ts";
-import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
+import { errorResponse, unavailableResponse } from "@omniroute/open-sse/utils/error.ts";
 import { getImageModelEntry, isImageOnlyModel } from "@omniroute/open-sse/config/imageRegistry.ts";
 import { acceptHeaderForcesStream } from "@omniroute/open-sse/utils/aiSdkCompat.ts";
 import {
@@ -1726,6 +1726,9 @@ async function handleSingleModelChat(
       forceLiveComboTest ||
       runtimeOptions.emergencyFallbackTried === true
   );
+  // requestRetry = 0 also means "stop at the first 429": the rate limit is returned to
+  // the client, never resent to a sibling account or the emergency fallback model.
+  const stopAtFirstRateLimit = baseRetrySettings.maxRetries === 0;
   const requestSignal = clientRawRequest?.signal ?? request?.signal ?? null;
   // Cumulative cap across all waits for this request (#7360 follow-up) — mirrors
   // combo.ts's comboCooldownBudgetLeftMs. Declared outside requestAttemptLoop so
@@ -2552,12 +2555,14 @@ async function handleSingleModelChat(
         continue;
       }
 
+      const stopOnRateLimit = stopAtFirstRateLimit && result.status === HTTP_STATUS.RATE_LIMITED;
+
       // Emergency fallback for budget exhaustion (402 / billing / quota keywords):
       // reroute to a free model (default provider/model: nvidia + nvidia/nemotron-3.5-super-vl-120b-a12b) exactly once.
       // Combo targets never emergency-hop: the combo is the operator's fallback policy
       // (target-level orchestration plus the global fallback #689 after it), and a
       // per-target hop burns extra upstream calls against exhausted providers (#1731).
-      if (!runtimeOptions.emergencyFallbackTried && !comboName) {
+      if (!runtimeOptions.emergencyFallbackTried && !comboName && !stopOnRateLimit) {
         const fallbackDecision = await resolveEmergencyFallbackDecision(
           Number(result.status || 0),
           String(result.error || ""),
@@ -2705,6 +2710,7 @@ async function handleSingleModelChat(
         !runtimeOptions.emergencyFallbackTried &&
         !comboName &&
         !forceLiveComboTest &&
+        !stopOnRateLimit &&
         shouldRetrySameAccountTransport({
           provider,
           status: result.status,
@@ -2792,7 +2798,9 @@ async function handleSingleModelChat(
       // to the next target — with ITS own pin. Same rule the antigravity
       // stream-readiness / pre-response-timeout and account-semaphore paths above
       // already apply.
-      if (shouldFallback && !hasForcedConnection) {
+      // The cooldown above is still recorded; only the rotation to a sibling is skipped.
+      const rotationStopped = stopOnRateLimit && shouldFallback && !hasForcedConnection;
+      if (shouldFallback && !hasForcedConnection && !rotationStopped) {
         if (Number.isFinite(cooldownMs) && cooldownMs > 0) {
           lastCooldownMs = cooldownMs;
           requestRetryLastCooldownMs = cooldownMs;
@@ -2828,6 +2836,20 @@ async function handleSingleModelChat(
         classifyProviderBreakerResult(result, isCombo, forceLiveComboTest, provider) === "failure"
       ) {
         breaker._onFailure();
+      }
+
+      // Rotation stopped at the first 429: answer in the shape the pool-exhausted reply had
+      // (JSON error, Retry-After from the cooldown just recorded). Paths that never rotated
+      // (pinned connection, no fallback) keep returning the upstream response as before.
+      if (rotationStopped) {
+        return withSelectedConnectionHeader(
+          unavailableResponse(
+            HTTP_STATUS.RATE_LIMITED,
+            `[${provider}/${model}] ${result.error || "Rate limited"}`,
+            cooldownMs > 0 ? new Date(Date.now() + cooldownMs) : null
+          ),
+          credentials?.connectionId
+        );
       }
 
       return withSelectedConnectionHeader(result.response, credentials?.connectionId);

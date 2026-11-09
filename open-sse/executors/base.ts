@@ -45,6 +45,7 @@ import {
   INTRA_RETRY_MAX_HINT_MS,
   readRateLimitRetryHintMs,
   shouldSkipIntraRetryFor429,
+  isStopAtFirstRateLimit,
 } from "./rateLimitIntraRetry.ts";
 import type { PoolConfig } from "../services/sessionPool/types.ts";
 import type { Session } from "../services/sessionPool/session.ts";
@@ -1747,16 +1748,24 @@ export class BaseExecutor {
           }
         }
 
+        // requestRetry = 0 (stop at the first 429): a rate limit goes back to the caller
+        // as is. None of the 429 resends below (usage-wall retry, intra-URL retry, next
+        // fallback URL) may run. Read only on a 429, so other responses pay nothing.
+        const stopOnRateLimit =
+          response.status === HTTP_STATUS.RATE_LIMITED && (await isStopAtFirstRateLimit());
+
         // Claude OAuth usage wall: accept the slow-lane offer / claim the weekly
         // session-limit reset and retry the SAME account instead of surfacing the 429
         // (which would cool the connection down). Runs AFTER every 400-driven retry
         // above so it classifies the FINAL response of this attempt.
-        const claudeRetry = await claudeUsageLimit.shouldRetry(response, url, {
-          credentials: activeCredentials,
-          signal,
-          budgetMs: fetchStartTimeoutMs,
-          sentSlow: claudeSentSlow,
-        });
+        const claudeRetry =
+          !stopOnRateLimit &&
+          (await claudeUsageLimit.shouldRetry(response, url, {
+            credentials: activeCredentials,
+            signal,
+            budgetMs: fetchStartTimeoutMs,
+            sentSlow: claudeSentSlow,
+          }));
         if (claudeRetry) {
           urlIndex--; // re-run this urlIndex (header injection sees the new lane state)
           continue;
@@ -1798,6 +1807,7 @@ export class BaseExecutor {
         // upstream calls before the caller rotates to the next account.
         if (
           !skipUpstreamRetry &&
+          !stopOnRateLimit &&
           response.status === HTTP_STATUS.RATE_LIMITED &&
           (retryAttemptsByUrl[urlIndex] ?? 0) < BaseExecutor.RETRY_CONFIG.maxAttempts &&
           !(await shouldSkipIntraRetryFor429(response))
@@ -1827,7 +1837,7 @@ export class BaseExecutor {
           log?.warn?.("AUTH", `401 on ${url} - API key may be invalid`);
         }
 
-        if (!skipUpstreamRetry && this.shouldRetry(response.status, urlIndex)) {
+        if (!skipUpstreamRetry && !stopOnRateLimit && this.shouldRetry(response.status, urlIndex)) {
           log?.debug?.("RETRY", `${response.status} on ${url}, trying fallback ${urlIndex + 1}`);
           lastStatus = response.status;
           continue;
