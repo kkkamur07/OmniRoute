@@ -27,6 +27,15 @@ import GitlabDuoSetupStep from "@/shared/components/oauthModal/GitlabDuoSetupSte
 import OAuthErrorStep from "@/shared/components/oauthModal/OAuthErrorStep";
 import OAuthWaitingStep from "@/shared/components/oauthModal/OAuthWaitingStep";
 import CopilotPolicyStep from "@/shared/components/oauthModal/CopilotPolicyStep";
+import OAuthBridgeWaitingStep, {
+  OAuthBridgeInstallHint,
+} from "@/shared/components/oauthModal/OAuthBridgeWaiting";
+import {
+  BRIDGE_DOCS_URL,
+  shouldShowBridgeHint,
+  shouldUseBridge,
+  useOAuthBridge,
+} from "@/shared/components/oauthModal/useOAuthBridge";
 import { getPasteTokenCopyKeys } from "@/shared/components/oauthModal/pasteTokenCopy";
 import { parseGrokCliPasteToken } from "@/lib/oauth/utils/grokCliAuthJson";
 import { buildGoogleLoopbackHint } from "@/lib/oauth/utils/googleLoopbackHint";
@@ -265,6 +274,9 @@ function LegacyOAuthModal({
   }, []);
 
   const { isLocalhost, isTrueLocalhost, placeholderUrl, loopbackLocation } = runtimeLocation;
+  // OmniRoute Sign-in Helper extension: carries registry redirects back to /callback.
+  const { bridgeVersion, arm } = useOAuthBridge();
+  const [bridgeArmed, setBridgeArmed] = useState(false);
   const callbackProcessedRef = useRef(false);
   const flowStartedRef = useRef(false);
 
@@ -445,6 +457,7 @@ function LegacyOAuthModal({
   const startOAuthFlow = useCallback(
     async (opts?: { grokBrowser?: boolean; manualLoopback?: boolean }) => {
       if (!provider) return;
+      const useBridge = shouldUseBridge({ provider, isTrueLocalhost, bridgeVersion });
       try {
         setError(null);
 
@@ -612,7 +625,7 @@ function LegacyOAuthModal({
               setPolling(false);
               forceManual = true;
             }
-          } else if (isLocalhost && !opts?.manualLoopback) {
+          } else if (isLocalhost && !opts?.manualLoopback && !useBridge) {
             setLoopbackHint(buildPkceLoopbackMismatchHint(provider, loopbackLocation));
             setStep("loopback-mismatch");
             return;
@@ -664,6 +677,22 @@ function LegacyOAuthModal({
         }
 
         setAuthData({ ...data, redirectUri: data.redirectUri || redirectUri });
+        // Bridge: the armed extension sends the redirect for this state to our /callback.
+        const armed =
+          useBridge &&
+          typeof data.state === "string" &&
+          !!data.state &&
+          (await arm({
+            provider,
+            state: data.state,
+            redirectUri: String(data.redirectUri || redirectUri),
+          }));
+        setBridgeArmed(armed);
+        if (armed) {
+          popupRef.current = null; // the extension closes the tab; no popup-closed fallback
+          setStep(window.open(data.authUrl, "oauth_auth") ? "waiting" : "input");
+          return;
+        }
 
         // For non-true-localhost (LAN IPs, remote) or manual fallback: use manual input mode (user pastes callback URL)
         if (!isTrueLocalhost || forceManual) {
@@ -697,6 +726,8 @@ function LegacyOAuthModal({
       invalidateDeviceFlow,
       grokBrowserMode,
       copilotPolicyAcknowledged,
+      bridgeVersion,
+      arm,
       t,
     ]
   );
@@ -1172,7 +1203,16 @@ function LegacyOAuthModal({
               <GitlabDuoSetupStep onContinue={() => void startOAuthFlow()} onClose={handleClose} />
             )}
 
-            {step === "waiting" && !isDeviceCode && (
+            {step === "waiting" && !isDeviceCode && bridgeArmed && (
+              <OAuthBridgeWaitingStep
+                title={t("bridgeWaitingTitle")}
+                description={t("bridgeWaitingDescription")}
+                pasteInsteadLabel={t("bridgePasteInstead")}
+                onPasteInstead={() => setStep("input")}
+              />
+            )}
+
+            {step === "waiting" && !isDeviceCode && !bridgeArmed && (
               <OAuthWaitingStep
                 waitingLabel={t("waiting")}
                 completeAuthLabel={t("completeAuthInPopup")}
@@ -1191,6 +1231,12 @@ function LegacyOAuthModal({
                 polling={polling}
               />
             )}
+
+            {step === "input" &&
+              !isDeviceCode &&
+              shouldShowBridgeHint({ provider, isTrueLocalhost, bridgeVersion }) && (
+                <OAuthBridgeInstallHint label={t("bridgeInstallHint")} href={BRIDGE_DOCS_URL} />
+              )}
 
             {/* Manual Input Step */}
             {step === "input" && !isDeviceCode && (

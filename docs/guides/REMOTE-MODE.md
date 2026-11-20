@@ -200,6 +200,8 @@ provider-specific port to tunnel.
 
 ## Connecting Codex / Grok on a remote install (fixed-loopback providers)
 
+To skip the paste step, see the [Sign-in helper extension](#sign-in-helper-extension).
+
 Codex, xAI (`xai-oauth`) and Grok CLI (`grok-cli`) register a **fixed** loopback
 `redirect_uri` with their upstream OAuth app. OmniRoute cannot change it — the
 provider always sends the browser back to the same hardcoded address:
@@ -245,6 +247,39 @@ active.
 > token or a `~/.codex/auth.json` session blob.
 
 ---
+
+## Sign-in helper extension
+
+On a remote dashboard (VPS, Pi, tunnel, LAN IP), some providers redirect to a fixed
+loopback (`codex`/`openai` to `http://localhost:1455/auth/callback`, `xai-oauth` to
+`http://127.0.0.1:56121/callback`, `grok-cli` to `http://127.0.0.1:56122/callback`) or to a
+provider-hosted code page (`claude` to `https://platform.claude.com/oauth/code/callback`), so
+you normally paste the URL or code back into the dialog.
+
+The OmniRoute Sign-in Helper (a Chrome MV3 extension) removes that step. The dashboard arms it
+when you click Connect. It catches only that one redirect (matching that redirect URI and that
+sign-in's `state`, one-shot, expires after 10 minutes) and sends the tab to your dashboard's own
+`/callback` page, which hands the code to the open dialog. The dialog shows "Finishing sign-in
+in the other tab" and completes by itself. No OmniRoute secret or token is given to the
+extension.
+
+**Install:** from the repo, open `chrome://extensions`, enable Developer mode, click "Load
+unpacked", and choose the `packages/oauth-bridge-extension` folder.
+
+**Approve your dashboard:** open the extension popup while on your dashboard tab and approve
+that origin (one time per dashboard origin).
+
+**Supported providers:** mainly `codex` / `openai`, `claude`, `xai-oauth` and `grok-cli`. The
+registry in `src/lib/oauth/externalRedirects.ts` also marks `devin-desktop`, `chatgpt`,
+`copilot-m365-web`, `devin-cli`, `renderhour` and `zed-hosted` as `bridge: "supported"`; the
+dashboard integration currently covers the providers that use the standard Connect dialog.
+**Not supported:** `antigravity` and `agy` (Google consent hangs without a live loopback
+listener; use the options in
+[Connecting Antigravity on a remote install](#connecting-antigravity-on-a-remote-install)).
+
+**Fallback:** without the extension (or if arming fails within about 1.5 s) the dialog keeps
+the existing paste flow. While waiting, "Paste the URL manually instead" switches to it. On
+true localhost the extension is not used.
 
 ## Managing tokens
 
