@@ -24,7 +24,15 @@ const BASE_MANIFEST = {
   name: "OmniRoute Sign-in Helper",
   version: "0.1.0",
   description: "Completes OmniRoute OAuth sign-ins on remote dashboards without copy-paste.",
-  permissions: ["declarativeNetRequest", "storage", "scripting", "webNavigation", "alarms"],
+  // activeTab lets the popup read the focused tab's URL before its origin is approved.
+  permissions: [
+    "declarativeNetRequest",
+    "storage",
+    "scripting",
+    "webNavigation",
+    "alarms",
+    "activeTab",
+  ],
   host_permissions: [],
   optional_host_permissions: ["http://*/*", "https://*/*"],
   background: { service_worker: "src/background.js", type: "module" },
@@ -37,7 +45,14 @@ const supported = () => EXTERNAL_REDIRECTS.filter((e) => e.bridge === "supported
 export function buildManifest(existing) {
   const base = existing && typeof existing === "object" ? existing : BASE_MANIFEST;
   const hostPermissions = [...new Set(supported().map((e) => e.hostPermission))].sort();
-  return JSON.stringify({ ...base, host_permissions: hostPermissions }, null, 2) + "\n";
+  // permissions always come from BASE_MANIFEST so a change here reaches the checked-in file.
+  return (
+    JSON.stringify(
+      { ...base, permissions: BASE_MANIFEST.permissions, host_permissions: hostPermissions },
+      null,
+      2
+    ) + "\n"
+  );
 }
 
 async function format(src, file) {

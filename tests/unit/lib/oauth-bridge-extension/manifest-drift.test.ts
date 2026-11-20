@@ -31,7 +31,11 @@ test("manifest basics and permissions", () => {
     "scripting",
     "webNavigation",
     "alarms",
+    "activeTab",
   ]);
+  // activeTab (not tabs) is what lets the popup read the focused dashboard tab's URL.
+  assert.ok(manifest.permissions.includes("activeTab"));
+  assert.ok(!manifest.permissions.includes("tabs"));
   assert.deepEqual(manifest.optional_host_permissions, ["http://*/*", "https://*/*"]);
   for (const p of [...manifest.host_permissions, ...manifest.permissions]) {
     assert.notEqual(p, "<all_urls>");

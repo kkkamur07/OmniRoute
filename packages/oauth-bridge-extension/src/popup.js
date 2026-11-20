@@ -1,3 +1,5 @@
+import { tabOrigin } from "./origin.js";
+
 const KEY = "approvedOrigins";
 const SCRIPT_ID = "omniroute-oauth-bridge";
 
@@ -91,12 +93,7 @@ function onApproveClick() {
 async function init() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   activeTab = tab || null;
-  try {
-    const url = new URL((tab && tab.url) || "");
-    if (url.protocol === "http:" || url.protocol === "https:") activeOrigin = url.origin;
-  } catch {
-    activeOrigin = null;
-  }
+  activeOrigin = tabOrigin(tab);
   if (activeOrigin) {
     $("origin").textContent = activeOrigin;
     $("current").hidden = false;
