@@ -49,7 +49,7 @@ const BRIDGE_CATEGORY_BY_KIND: Record<ExternalRedirectKind, OAuthOnboardingCateg
 const BRIDGE_REASON_BY_KIND: Record<ExternalRedirectKind, string> = {
   "fixed-loopback": "Redirects to a fixed loopback port; the sign-in helper carries it back.",
   "dashboard-port-loopback":
-    "Redirects to a loopback on the dashboard port; the sign-in helper carries it back.",
+    "Redirects to a local loopback port; the sign-in helper carries it back.",
   "provider-code-page":
     "Provider page shows the code; the sign-in helper carries it back instead of a paste.",
 };

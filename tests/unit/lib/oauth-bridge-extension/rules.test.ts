@@ -294,23 +294,37 @@ test("appended: rejects missing params, look-alikes and other URIs", () => {
   for (const c of cases) assert.equal(zedMatch(c), null, c);
 });
 
-test("appended: substitution appends the encoded state and drops the fragment", () => {
+test("appended: substitution puts the encoded state first and drops the fragment", () => {
   const state = "a b/c=d&e";
   assert.equal(
     zedSubstitute(`${ZED_URI}?user_id=1&access_token=abc#frag`, state),
-    `${DASH}/callback?user_id=1&access_token=abc&state=${encodeURIComponent(state)}`
+    `${DASH}/callback?state=${encodeURIComponent(state)}&user_id=1&access_token=abc`
   );
   assert.equal(
     zedSubstitute(`${ZED_URI}?access_token=abc&user_id=1`),
-    `${DASH}/callback?access_token=abc&user_id=1&state=s`
+    `${DASH}/callback?state=s&access_token=abc&user_id=1`
   );
+  assert.ok(zedRule().action.redirect.regexSubstitution.startsWith(`${DASH}/callback?state=s&`));
+});
+
+test("appended: a crafted landing state never shadows the armed state", () => {
+  for (const landing of [
+    `${ZED_URI}?state=evil&user_id=1&access_token=x`,
+    `${ZED_URI}?user_id=1&state=evil&access_token=x`,
+    `${ZED_URI}?user_id=1&access_token=x&st%61te=evil`,
+  ]) {
+    const relayed = zedSubstitute(landing, "armed");
+    assert.ok(relayed, landing);
+    assert.equal(new URL(relayed).searchParams.get("state"), "armed", landing);
+  }
 });
 
 test("appended: encoded state has no DNR substitution metacharacters", () => {
   const nasty = "\\1\\0$1$&\\\\9%5C";
   const rule = zedRule(nasty);
   const sub = rule.action.redirect.regexSubstitution;
-  const tail = sub.slice(sub.indexOf("&state=") + "&state=".length);
+  const head = "/callback?state=";
+  const tail = sub.slice(sub.indexOf(head) + head.length, sub.lastIndexOf("&\\1"));
   assert.equal(tail, encodeURIComponent(nasty));
   assert.ok(!tail.includes("\\"));
   assert.equal(sub.match(/\\[0-9]/g)?.length, 1);

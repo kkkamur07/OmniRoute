@@ -192,9 +192,14 @@ export function buildAppendedRegexFilter(redirectUri, requiredParams) {
 /**
  * A declarativeNetRequest session rule redirecting the matched tab to the dashboard. With
  * `requiredParams` (appended mode) the rule matches buildAppendedRegexFilter and the
- * substitution appends `&state=<encoded state>`; encodeURIComponent never emits `\`, so the
- * state cannot be read as a `\N` capture reference. Returns null if the appended filter
- * cannot be built.
+ * substitution puts `state=<encoded state>` FIRST, before the captured query, so
+ * URLSearchParams.get("state") (first value wins) always yields the armed state even when a
+ * crafted landing query carries its own `state=`. The filter does not try to exclude such a
+ * param: an RE2 prefix-complement in every gap of every permutation would multiply the pattern
+ * against Chrome's 2 KB DNR regex memory cap, and URLSearchParams decodes names, so
+ * `st%61te=` would slip past it anyway. encodeURIComponent never emits `\`, so the state
+ * cannot be read as a `\N` capture reference. Returns null if the appended filter cannot be
+ * built.
  */
 export function buildRedirectRule({ id, redirectUri, state, dashboardOrigin, requiredParams }) {
   const appended = requiredParams !== undefined;
@@ -203,7 +208,7 @@ export function buildRedirectRule({ id, redirectUri, state, dashboardOrigin, req
     : buildRegexFilter(redirectUri, state);
   if (!regexFilter) return null;
   const regexSubstitution = appended
-    ? `${dashboardOrigin}/callback?\\1&state=${encodeURIComponent(state)}`
+    ? `${dashboardOrigin}/callback?state=${encodeURIComponent(state)}&\\1`
     : `${dashboardOrigin}/callback?\\1`;
   return {
     id,

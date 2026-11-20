@@ -25,10 +25,10 @@ function publicKeyFromAuthUrl(authUrl: string): crypto.KeyObject {
   return crypto.createPublicKey({ key: der, format: "der", type: "pkcs1" });
 }
 
-/** What the extension relays: the native-app query with the armed state appended last. */
+/** What the extension relays: the armed state first, then the native-app query. */
 function relayedUrl(userId: string, encryptedToken: string, state: string): string {
   const query = new URLSearchParams({ user_id: userId, access_token: encryptedToken });
-  return `${DASHBOARD}/callback?${query.toString()}&state=${encodeURIComponent(state)}`;
+  return `${DASHBOARD}/callback?state=${encodeURIComponent(state)}&${query.toString()}`;
 }
 
 /** src/app/callback/page.tsx: user_id + access_token and no code means code = full URL. */

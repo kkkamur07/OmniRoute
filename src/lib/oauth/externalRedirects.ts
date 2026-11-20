@@ -32,7 +32,7 @@ export interface ExternalRedirectEntry {
   /**
    * How the armed state reaches the dashboard. Default "query": the provider echoes
    * `state=` in its redirect. "appended": the provider sends no state, so the extension
-   * appends the armed state to the relayed query. Honoured by the extension only from its
+   * puts the armed state first in the relayed query. Honoured by the extension only from its
    * built-in list.
    */
   stateMode?: "query" | "appended";
@@ -176,7 +176,7 @@ export const EXTERNAL_REDIRECTS: readonly ExternalRedirectEntry[] = [
       "Zed native_app_signin sends no OAuth state (zedAuth.ts createZedNativeAuthData) and " +
       "redirects to http://127.0.0.1:<native_app_port>/?user_id&access_token (an " +
       "RSA-encrypted token, not code/state). Appended mode: the extension matches on " +
-      "user_id + access_token and appends the armed state to the relayed /callback query; " +
+      "user_id + access_token and puts the armed state first in the relayed /callback query; " +
       "OAuthModal still requires that state to match the attempt. Without the extension, " +
       "remote sign-in uses manual URL paste.",
   },

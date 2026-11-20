@@ -322,14 +322,14 @@ const zedMsg = (over: Record<string, unknown> = {}) =>
 const armZed = (over: Record<string, unknown> = {}) =>
   bg.handleArm(zedMsg(over), sender, { allowed: ZED_ALLOWED });
 const zedRules = () =>
-  mock.rules.filter((r) => r.action.redirect.regexSubstitution.includes("&state="));
+  mock.rules.filter((r) => r.action.redirect.regexSubstitution.includes("/callback?state="));
 
 test("arming zed builds the appended-state rule", async () => {
   reset();
   assert.deepEqual(await armZed(), { ok: true });
   assert.equal(mock.rules.length, 1);
   const rule = mock.rules[0];
-  assert.equal(rule.action.redirect.regexSubstitution, `${ORIGIN}/callback?\\1&state=zst4te`);
+  assert.equal(rule.action.redirect.regexSubstitution, `${ORIGIN}/callback?state=zst4te&\\1`);
   const re = new RegExp(rule.condition.regexFilter);
   assert.ok(re.test(`${ZED_URI}?user_id=1&access_token=abc`));
   assert.ok(re.test(`${ZED_URI}?access_token=abc&user_id=1`));
@@ -355,7 +355,7 @@ test("arming zed twice with different states leaves exactly one zed rule", async
   assert.deepEqual(await armZed({ state: "second" }), { ok: true });
   assert.equal(zedRules().length, 1);
   assert.equal(mock.rules.length, 1);
-  assert.ok(mock.rules[0].action.redirect.regexSubstitution.endsWith("&state=second"));
+  assert.ok(mock.rules[0].action.redirect.regexSubstitution.includes("?state=second&"));
   assert.equal(mock.alarms.has(`oauth-bridge-rule-${firstId}`), false);
   assert.equal(mock.alarms.size, 1);
   const armed = mock.session.get("armed") as Record<string, unknown>;

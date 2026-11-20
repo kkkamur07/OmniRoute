@@ -12,7 +12,7 @@
  * `stateMode: "appended"` (appendedModeFor in rules.js; Zed, whose redirect carries no state),
  * the redirect URI must be an exact allow-list match and the rule instead matches
  * `<redirectUri>?<query with every requiredParam>`, substituting
- * `<dashboard-origin>/callback?<query>&state=<armed state>`. Because such a rule cannot tell two
+ * `<dashboard-origin>/callback?state=<armed state>&<query>` (state first, so it wins). Because such a rule cannot tell two
  * attempts apart, arming one replaces every other appended-mode rule for the same provider.
  *
  * When the tab commits that /callback URL the rule is removed and,
