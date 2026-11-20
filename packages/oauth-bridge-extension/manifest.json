@@ -3,7 +3,14 @@
   "name": "OmniRoute Sign-in Helper",
   "version": "0.1.0",
   "description": "Completes OmniRoute OAuth sign-ins on remote dashboards without copy-paste.",
-  "permissions": ["declarativeNetRequest", "storage", "scripting", "webNavigation", "alarms"],
+  "permissions": [
+    "declarativeNetRequest",
+    "storage",
+    "scripting",
+    "webNavigation",
+    "alarms",
+    "activeTab"
+  ],
   "host_permissions": [
     "http://127.0.0.1/*",
     "http://localhost/*",

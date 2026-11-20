@@ -15,7 +15,7 @@ Connect dialog.
 ## Approve a dashboard
 
 1. Open your OmniRoute dashboard in a tab.
-2. Click the extension icon.
+2. With that dashboard tab focused, click the extension icon.
 3. Click Use with this site and accept the permission prompt.
 4. Reload the dashboard if it was already open.
 
@@ -93,6 +93,8 @@ fails in that case, so it cannot ship silently.
 - `scripting`: register and inject the content script on approved dashboards.
 - `webNavigation`: detect the redirect landing so the tab can be closed.
 - `alarms`: expire rules after 10 minutes.
+- `activeTab`: read the focused tab's address when you click the icon, so the popup can offer
+  that dashboard for approval.
 - `host_permissions`: the provider redirect hosts listed above, generated from the registry.
 - `optional_host_permissions` (`http://*/*`, `https://*/*`): requested per dashboard when you
   click Use with this site.
