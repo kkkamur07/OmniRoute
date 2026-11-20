@@ -26,5 +26,15 @@
     "default_title": "OmniRoute Sign-in Helper",
     "default_popup": "src/popup.html"
   },
-  "minimum_chrome_version": "120"
+  "minimum_chrome_version": "120",
+  "web_accessible_resources": [
+    {
+      "resources": ["ping.json", "approve.html", "src/approve.js", "src/approve.css"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmfZ3zejOVOabJdSzPpxHFov6KTc73n/AadCWYidkLWesLKbgF/RRVNrhCwUkZYJcbRdRo+qa5QLdN6frjeQEU51BmmHQb2c6MGuQBDK9srWZw3HI3ehHYuvx7VCU/p53X7N3V0n+ptjN7E3yyiiGVIApGJs/7EIIN/Ny9yzlRAtzmCAmRQbAuzAIpFDhSpew/4ww5h6WBccXsn/wczAttKLDfGNEnBsnSbDDs7lymKavkSPy7MXJX2wbHYPjrfiZy6vXhneBP+rCD+6AFBJacM6E6vxAXSMSX2tNuI1/ig7IvbJUmkDk8YpuHE0F1YNuD0ngYL6mlz3EESVv4k8FZwIDAQAB",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-ancestors 'none'"
+  }
 }

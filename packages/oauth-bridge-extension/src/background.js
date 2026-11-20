@@ -20,7 +20,8 @@
  *
  * Storage keys:
  *   chrome.storage.local   "approvedOrigins"  string[] of approved dashboard origins. Written by
- *                                             the popup, which also registers content.js.
+ *                                             approveOrigin in approval.js, from the popup or
+ *                                             from here for the approve page.
  *   chrome.storage.session "armed"            {[ruleId]: ArmedEntry}, kept in session storage
  *                                             because the service worker is restarted often.
  * Alarms: "oauth-bridge-rule-<ruleId>", one per armed rule, fired after RULE_TTL_MINUTES.
@@ -31,15 +32,20 @@
  * Code, state and token values are secrets: never log them.
  */
 
-import { MSG_ARM, REASONS, RULE_TTL_MINUTES, isValidOrigin, parseArmMessage } from "./protocol.js";
+import {
+  MSG_APPROVE_ORIGIN,
+  MSG_ARM,
+  REASONS,
+  RULE_TTL_MINUTES,
+  isValidOrigin,
+  parseArmMessage,
+} from "./protocol.js";
+import { CONTENT_SCRIPT_FILE, CONTENT_SCRIPT_ID, approveOrigin, getApproved } from "./approval.js";
 import { ALLOWED_REDIRECTS } from "./allowedRedirects.generated.js";
 import { appendedModeFor, buildRedirectRule, isArmableRedirect } from "./rules.js";
 
-const APPROVED_ORIGINS_KEY = "approvedOrigins";
 const ARMED_KEY = "armed";
 const ALARM_PREFIX = "oauth-bridge-rule-";
-const CONTENT_SCRIPT_ID = "omniroute-oauth-bridge";
-const CONTENT_SCRIPT_FILE = "src/content.js";
 const CLOSE_TAB_DELAY_MS = 3000;
 const REDIRECT_QUALIFIERS = ["server_redirect", "client_redirect"];
 
@@ -70,10 +76,8 @@ async function writeArmed(armed) {
   await api().storage.session.set({ [ARMED_KEY]: armed });
 }
 
-async function readApprovedOrigins() {
-  const stored = await api().storage.local.get(APPROVED_ORIGINS_KEY);
-  const origins = stored?.[APPROVED_ORIGINS_KEY];
-  return Array.isArray(origins) ? origins.filter((o) => isValidOrigin(o)) : [];
+function readApprovedOrigins() {
+  return getApproved(api());
 }
 
 function alarmName(ruleId) {
@@ -323,6 +327,39 @@ export async function syncContentScripts() {
   else await c.scripting.registerContentScripts([script]);
 }
 
+/** True when `sender` is a page of this extension (approve.html), not a content script or site. */
+export function isExtensionPageSender(sender) {
+  const c = api();
+  const base = c.runtime.getURL("");
+  if (!sender || sender.id !== c.runtime.id) return false;
+  if (typeof sender.url !== "string" || !sender.url.startsWith(base)) return false;
+  // Content scripts report the page's origin; extension pages report the extension origin.
+  return sender.origin === undefined || `${sender.origin}/` === base;
+}
+
+/**
+ * Handles {type: "approve-origin", origin} from the approve page. Rejects any sender that is
+ * not an extension page, any invalid origin and any origin whose host permission the user did
+ * not grant (the page requests it in its click handler). On success the origin is stored, the
+ * content script is registered and injected into open tabs of that origin.
+ * @returns {Promise<{ok: true} | {ok: false, reason: string}>}
+ */
+export async function handleApproveOrigin(message, sender) {
+  try {
+    if (!isExtensionPageSender(sender)) return fail(REASONS.unapprovedOrigin);
+    const origin = message?.origin;
+    if (message?.type !== MSG_APPROVE_ORIGIN || !isValidOrigin(origin)) {
+      return fail(REASONS.invalidMessage);
+    }
+    const granted = await api().permissions.contains({ origins: [`${origin}/*`] });
+    if (!granted) return fail(REASONS.unapprovedOrigin);
+    await approveOrigin(api(), origin);
+    return { ok: true };
+  } catch {
+    return fail(REASONS.internal);
+  }
+}
+
 async function onBrowserStartOrInstall() {
   try {
     await clearStaleRules();
@@ -339,6 +376,12 @@ async function onBrowserStartOrInstall() {
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   const c = api();
   c.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message && message.type === MSG_APPROVE_ORIGIN) {
+      handleApproveOrigin(message, sender).then(sendResponse, () =>
+        sendResponse(fail(REASONS.internal))
+      );
+      return true;
+    }
     if (!message || message.type !== MSG_ARM) return false;
     if (sender?.id !== c.runtime.id) return false;
     handleArm(message, sender).then(sendResponse, () => sendResponse(fail(REASONS.internal)));

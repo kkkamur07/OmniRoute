@@ -123,6 +123,7 @@
     "build:backend": "cross-env OMNIROUTE_BUILD_BACKEND_ONLY=1 node scripts/build/build-next-isolated.mjs",
     "build:contributor": "cross-env OMNIROUTE_BUILD_PROFILE=contributor OMNIROUTE_USE_TURBOPACK=0 node scripts/build/build-next-isolated.mjs",
     "oauth-bridge:build": "node --import tsx/esm scripts/build/oauth-bridge-manifest.mjs",
+    "oauth-bridge:package": "node scripts/build/oauth-bridge-package.mjs",
     "build:cli": "node --import tsx scripts/build/prepublish.ts",
     "omniroute:verify": "node scripts/check/omniroute-verify.mjs",
     "build:release": "rm -rf .build dist && OMNIROUTE_BUILD_SHA=$(git rev-parse --short HEAD) npm run build && npm run build:cli && node scripts/build/write-build-sha.mjs",

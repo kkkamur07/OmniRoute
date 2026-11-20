@@ -16,6 +16,8 @@ export const MSG_READY = "ready";
 export const MSG_ARM = "oauth-bridge:arm";
 export const MSG_ARMED = "oauth-bridge:armed";
 export const MSG_ERROR = "oauth-bridge:error";
+/** Approve page -> service worker (chrome.runtime.sendMessage, extension pages only). */
+export const MSG_APPROVE_ORIGIN = "approve-origin";
 
 /** How long an armed rule lives before it is removed, in minutes. */
 export const RULE_TTL_MINUTES = 10;

@@ -19,7 +19,29 @@ export const MANIFEST_PATH = path.join(EXT_DIR, "manifest.json");
 export const README_PATH = path.join(EXT_DIR, "README.md");
 export const ALLOWED_PATH = path.join(EXT_DIR, "src", "allowedRedirects.generated.js");
 
-const BASE_MANIFEST = {
+// Public half of the extension signing key. It pins the unpacked extension ID to
+// EXTENSION_ID below so the dashboard can reach ping.json / approve.html. The private key is
+// never committed; the Chrome Web Store signs published builds with its own key.
+export const MANIFEST_KEY =
+  "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmfZ3zejOVOabJdSzPpxHFov6KTc73n/AadCWYidkLWesLKbgF/RRVNrhCwUkZYJcbRdRo+qa5QLdN6frjeQEU51BmmHQb2c6MGuQBDK9srWZw3HI3ehHYuvx7VCU/p53X7N3V0n+ptjN7E3yyiiGVIApGJs/7EIIN/Ny9yzlRAtzmCAmRQbAuzAIpFDhSpew/4ww5h6WBccXsn/wczAttKLDfGNEnBsnSbDDs7lymKavkSPy7MXJX2wbHYPjrfiZy6vXhneBP+rCD+6AFBJacM6E6vxAXSMSX2tNuI1/ig7IvbJUmkDk8YpuHE0F1YNuD0ngYL6mlz3EESVv4k8FZwIDAQAB";
+export const EXTENSION_ID = "gmckjokkoeeokoldknjmaipdbnceldil";
+
+// Pages the dashboard may load: ping.json (installed-but-not-approved detection) and the
+// approve page opened with window.open. Fixed here so the checked-in manifest cannot drift.
+export const WEB_ACCESSIBLE_RESOURCES = [
+  {
+    resources: ["ping.json", "approve.html", "src/approve.js", "src/approve.css"],
+    matches: ["<all_urls>"],
+  },
+];
+
+// frame-ancestors 'none' keeps approve.html (web-accessible to every site) out of iframes, so
+// a site cannot overlay a decoy on its Allow button. script-src / object-src are the MV3 minimum.
+export const CONTENT_SECURITY_POLICY = {
+  extension_pages: "script-src 'self'; object-src 'self'; frame-ancestors 'none'",
+};
+
+export const BASE_MANIFEST = {
   manifest_version: 3,
   name: "OmniRoute Sign-in Helper",
   version: "0.1.0",
@@ -37,7 +59,10 @@ const BASE_MANIFEST = {
   optional_host_permissions: ["http://*/*", "https://*/*"],
   background: { service_worker: "src/background.js", type: "module" },
   action: { default_title: "OmniRoute Sign-in Helper", default_popup: "src/popup.html" },
+  web_accessible_resources: WEB_ACCESSIBLE_RESOURCES,
+  content_security_policy: CONTENT_SECURITY_POLICY,
   minimum_chrome_version: "120",
+  key: MANIFEST_KEY,
 };
 
 const supported = () => EXTERNAL_REDIRECTS.filter((e) => e.bridge === "supported");
@@ -45,10 +70,19 @@ const supported = () => EXTERNAL_REDIRECTS.filter((e) => e.bridge === "supported
 export function buildManifest(existing) {
   const base = existing && typeof existing === "object" ? existing : BASE_MANIFEST;
   const hostPermissions = [...new Set(supported().map((e) => e.hostPermission))].sort();
-  // permissions always come from BASE_MANIFEST so a change here reaches the checked-in file.
+  // permissions, web_accessible_resources, content_security_policy and key always come from
+  // BASE_MANIFEST so a change here reaches the checked-in file.
   return (
     JSON.stringify(
-      { ...base, permissions: BASE_MANIFEST.permissions, host_permissions: hostPermissions },
+      {
+        ...base,
+        permissions: BASE_MANIFEST.permissions,
+        host_permissions: hostPermissions,
+        web_accessible_resources: BASE_MANIFEST.web_accessible_resources,
+        content_security_policy: BASE_MANIFEST.content_security_policy,
+        minimum_chrome_version: BASE_MANIFEST.minimum_chrome_version,
+        key: BASE_MANIFEST.key,
+      },
       null,
       2
     ) + "\n"

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Allow OmniRoute Sign-in Helper</title>
+    <link rel="stylesheet" href="src/approve.css" />
+  </head>
+  <body>
+    <main>
+      <h1>OmniRoute Sign-in Helper</h1>
+      <div id="ask" hidden>
+        <p>Allow the helper to finish sign-ins for this dashboard:</p>
+        <p class="origin" id="origin"></p>
+        <p class="muted">
+          It only reads this site to receive sign-in requests. Nothing leaves your browser except
+          the redirect to your own dashboard.
+        </p>
+        <button id="allow" class="primary" type="button" disabled>Allow</button>
+      </div>
+      <p id="invalid" class="error" hidden>
+        This link does not name a valid dashboard address. Open it from your OmniRoute dashboard.
+      </p>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </main>
+    <script type="module" src="src/approve.js"></script>
+  </body>
+</html>
