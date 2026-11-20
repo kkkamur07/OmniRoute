@@ -7,11 +7,16 @@ import Modal from "./Modal";
 import Button from "./Button";
 import Input from "./Input";
 import OAuthBridgeWaitingStep from "./oauthModal/OAuthBridgeWaiting";
+import ProviderSignInStatus from "./oauthModal/ProviderSignInStatus";
+import { rememberSignInAttempt } from "./oauthModal/signInAttempt";
 import {
   shouldUseBridge,
   useOAuthBridge,
   useOAuthCallbackRelay,
 } from "./oauthModal/useOAuthBridge";
+
+const M365_PROVIDER_ID = "copilot-m365-web";
+const M365_PROVIDER_NAME = "Microsoft 365 Copilot";
 
 const PROVIDER = "copilot-m365-web";
 const NATIVE_REDIRECT = "https://login.microsoftonline.com/common/oauth2/nativeclient";
@@ -129,6 +134,7 @@ function useM365OAuthFlow({ onClose, onSuccess, connectionId }: Props) {
           redirectUri: nextAttempt.redirectUri,
         }));
       if (controller.signal.aborted) return;
+      rememberSignInAttempt(nextAttempt.state, M365_PROVIDER_ID, M365_PROVIDER_NAME);
       setAttempt(nextAttempt);
       setBridgeArmed(armed);
       setStatus("ready");
@@ -236,15 +242,19 @@ export default function M365OAuthModal(props: Props) {
     <Modal isOpen onClose={close} title={t("m365Title")} size="lg">
       <div className="flex flex-col gap-4">
         {status === "success" ? (
-          <>
-            <p role="status">{t("success")}</p>
+          <ProviderSignInStatus
+            state="success"
+            providerId={M365_PROVIDER_ID}
+            providerName={M365_PROVIDER_NAME}
+          >
             <Button onClick={close}>{t("done")}</Button>
-          </>
+          </ProviderSignInStatus>
         ) : (
           <>
             {flow.bridgeArmed ? (
               <OAuthBridgeWaitingStep
-                title={t("bridgeWaitingTitle")}
+                providerId={M365_PROVIDER_ID}
+                providerName={M365_PROVIDER_NAME}
                 description={t("bridgeWaitingDescription")}
                 pasteInsteadLabel={t("bridgePasteInstead")}
                 onPasteInstead={() => flow.setBridgeArmed(false)}
