@@ -57,3 +57,24 @@ test("referenced files exist", () => {
   assert.ok(srcs.length > 0);
   for (const s of srcs) assert.ok(exists(path.join(dir, s)), s);
 });
+
+test("README provider section is delimited and lists every registry provider", () => {
+  const readme = fs.readFileSync(path.join(EXT, "README.md"), "utf8");
+  const startMarker = "<!-- oauth-bridge:providers:start -->";
+  const endMarker = "<!-- oauth-bridge:providers:end -->";
+  assert.ok(readme.includes(startMarker));
+  assert.ok(readme.includes(endMarker));
+  const section = readme.slice(readme.indexOf(startMarker), readme.indexOf(endMarker));
+  const unsupportedAt = section.indexOf("Unsupported:");
+  assert.ok(unsupportedAt > 0);
+  const table = section.slice(0, unsupportedAt);
+  const unsupportedPart = section.slice(unsupportedAt);
+  for (const e of EXTERNAL_REDIRECTS) {
+    if (e.bridge === "supported") {
+      assert.ok(table.includes(`\`${e.provider}\``), e.provider);
+      assert.ok(table.includes(e.redirectUri), e.redirectUri);
+    } else {
+      assert.ok(unsupportedPart.includes(`\`${e.provider}\``), e.provider);
+    }
+  }
+});

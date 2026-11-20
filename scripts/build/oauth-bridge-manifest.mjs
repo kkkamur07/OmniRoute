@@ -16,6 +16,7 @@ import { EXTERNAL_REDIRECTS } from "../../src/lib/oauth/externalRedirects.ts";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const EXT_DIR = path.join(ROOT, "packages", "oauth-bridge-extension");
 export const MANIFEST_PATH = path.join(EXT_DIR, "manifest.json");
+export const README_PATH = path.join(EXT_DIR, "README.md");
 export const ALLOWED_PATH = path.join(EXT_DIR, "src", "allowedRedirects.generated.js");
 
 const BASE_MANIFEST = {
@@ -60,6 +61,44 @@ export async function buildAllowedRedirectsSource() {
   return format(src, ALLOWED_PATH);
 }
 
+export const README_START = "<!-- oauth-bridge:providers:start -->";
+export const README_END = "<!-- oauth-bridge:providers:end -->";
+
+export function buildReadmeSection() {
+  const rows = supported().map(
+    (e) => `| \`${e.provider}\` | ${e.kind} | \`${e.redirectUri}\` | ${e.phase} |`
+  );
+  const unsupported = EXTERNAL_REDIRECTS.filter((e) => e.bridge === "unsupported").map(
+    (e) => `- \`${e.provider}\`: ${e.notes ?? "not supported."}`
+  );
+  return [
+    "| Provider | Kind | Redirect URI | Phase |",
+    "| --- | --- | --- | --- |",
+    ...rows,
+    "",
+    "`{port}` is the dashboard's own port.",
+    "",
+    "Unsupported:",
+    "",
+    ...unsupported,
+  ].join("\n");
+}
+
+export async function spliceReadme(readme) {
+  const start = readme.indexOf(README_START);
+  const end = readme.indexOf(README_END);
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`README.md is missing the ${README_START} / ${README_END} markers`);
+  }
+  const next =
+    readme.slice(0, start + README_START.length) +
+    "\n\n" +
+    buildReadmeSection() +
+    "\n\n" +
+    readme.slice(end);
+  return format(next, README_PATH);
+}
+
 function readIfExists(file) {
   return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
 }
@@ -86,6 +125,7 @@ export async function main(argv = process.argv.slice(2)) {
       await format(buildManifest(current ? JSON.parse(current) : null), MANIFEST_PATH),
     ],
     [ALLOWED_PATH, await buildAllowedRedirectsSource()],
+    [README_PATH, await spliceReadme(readIfExists(README_PATH) ?? "")],
   ];
   const stale = [];
   for (const [file, content] of outputs) {

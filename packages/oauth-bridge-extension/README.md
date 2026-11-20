@@ -32,22 +32,30 @@ Use Remove in the popup to revoke a dashboard at any time.
 
 ## Supported providers
 
-| Provider           | Redirect URI                                                   |
-| ------------------ | -------------------------------------------------------------- |
-| `codex`            | `http://localhost:1455/auth/callback`                          |
-| `openai`           | `http://localhost:1455/auth/callback`                          |
-| `claude`           | `https://platform.claude.com/oauth/code/callback`              |
-| `xai-oauth`        | `http://127.0.0.1:56121/callback`                              |
-| `grok-cli`         | `http://127.0.0.1:56122/callback`                              |
-| `devin-desktop`    | `http://127.0.0.1:59653/callback`                              |
-| `chatgpt`          | `http://127.0.0.1:1455/auth/callback`                          |
-| `copilot-m365-web` | `https://login.microsoftonline.com/common/oauth2/nativeclient` |
-| `devin-cli`        | `http://localhost:{port}/auth/callback`                        |
-| `renderhour`       | `http://localhost:{port}/callback`                             |
-| `zed-hosted`       | `http://127.0.0.1:{port}/`                                     |
+<!-- oauth-bridge:providers:start -->
 
-`{port}` is the dashboard-chosen loopback port. `antigravity` and `agy` are not supported: Google's
-native-app consent hangs without a live loopback listener, so there is no redirect to catch.
+| Provider           | Kind                    | Redirect URI                                                   | Phase |
+| ------------------ | ----------------------- | -------------------------------------------------------------- | ----- |
+| `codex`            | fixed-loopback          | `http://localhost:1455/auth/callback`                          | major |
+| `openai`           | fixed-loopback          | `http://localhost:1455/auth/callback`                          | major |
+| `claude`           | provider-code-page      | `https://platform.claude.com/oauth/code/callback`              | major |
+| `xai-oauth`        | fixed-loopback          | `http://127.0.0.1:56121/callback`                              | major |
+| `grok-cli`         | fixed-loopback          | `http://127.0.0.1:56122/callback`                              | major |
+| `devin-desktop`    | fixed-loopback          | `http://127.0.0.1:59653/callback`                              | later |
+| `chatgpt`          | fixed-loopback          | `http://127.0.0.1:1455/auth/callback`                          | later |
+| `copilot-m365-web` | provider-code-page      | `https://login.microsoftonline.com/common/oauth2/nativeclient` | later |
+| `devin-cli`        | dashboard-port-loopback | `http://localhost:{port}/auth/callback`                        | later |
+| `renderhour`       | dashboard-port-loopback | `http://localhost:{port}/callback`                             | later |
+| `zed-hosted`       | dashboard-port-loopback | `http://127.0.0.1:{port}/`                                     | later |
+
+`{port}` is the dashboard's own port.
+
+Unsupported:
+
+- `antigravity`: Google firstparty/nativeapp consent hangs without a live loopback listener, so there is no redirect to catch (see googleLoopbackHint.ts).
+- `agy`: Same Google native-app consent as antigravity; hangs without a loopback listener.
+
+<!-- oauth-bridge:providers:end -->
 
 If the extension is not installed, the dashboard's paste flow still works as before.
 
