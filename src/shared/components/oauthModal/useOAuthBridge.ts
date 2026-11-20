@@ -21,6 +21,8 @@ import { getExternalRedirect } from "@/lib/oauth/externalRedirects";
 export const BRIDGE_SOURCE = "omniroute-oauth-bridge";
 export const DASHBOARD_SOURCE = "omniroute-dashboard";
 export const BRIDGE_ARM_TIMEOUT_MS = 1500;
+/** Registry phases the dashboard bridges today; phase B widens this in one place. */
+export const BRIDGE_ENABLED_PHASES = ["major"] as const;
 
 /** Docs section the "install the helper" hint links to. */
 export const BRIDGE_DOCS_URL =
@@ -76,9 +78,14 @@ export function isBridgeReplyMessage(
   );
 }
 
-/** True when the registry says this provider's redirect can be carried by the extension. */
+/** True when the registry marks the provider bridge-supported in an enabled phase. */
 export function isBridgeSupportedProvider(provider: string | undefined): boolean {
-  return !!provider && getExternalRedirect(provider)?.bridge === "supported";
+  const entry = provider ? getExternalRedirect(provider) : undefined;
+  return (
+    !!entry &&
+    entry.bridge === "supported" &&
+    (BRIDGE_ENABLED_PHASES as readonly string[]).includes(entry.phase)
+  );
 }
 
 /** Use the bridge only off true-localhost, with the extension present, for supported providers. */
