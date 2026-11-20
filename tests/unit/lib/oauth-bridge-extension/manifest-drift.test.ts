@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { EXTERNAL_REDIRECTS } from "../../../../src/lib/oauth/externalRedirects.ts";
+import { ALLOWED_REDIRECTS } from "../../../../packages/oauth-bridge-extension/src/allowedRedirects.generated.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const EXT = path.join(ROOT, "packages", "oauth-bridge-extension");
@@ -44,6 +45,19 @@ test("host_permissions match the supported registry entries", () => {
     ),
   ].sort();
   assert.deepEqual(manifest.host_permissions, expected);
+});
+
+test("every provider-code-page origin is covered by host_permissions", () => {
+  const registry = EXTERNAL_REDIRECTS.filter(
+    (e) => e.bridge === "supported" && e.kind === "provider-code-page"
+  );
+  const generated = ALLOWED_REDIRECTS.filter((e) => e.kind === "provider-code-page");
+  assert.ok(registry.length > 0);
+  assert.ok(generated.length > 0);
+  for (const e of [...registry, ...generated]) {
+    const pattern = `${new URL(e.redirectUri).origin}/*`;
+    assert.ok(manifest.host_permissions.includes(pattern), `${e.provider}: ${pattern}`);
+  }
 });
 
 test("referenced files exist", () => {
