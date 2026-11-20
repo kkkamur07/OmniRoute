@@ -13,6 +13,7 @@ import {
   normalizeDevinSessionToken,
 } from "@/lib/oauth/providers/devin-desktop";
 import { buildPkceLoopbackMismatchHint } from "@/lib/oauth/utils/pkceLoopbackWarning";
+import { resolveExternalRedirectUri } from "@/lib/oauth/externalRedirects";
 import { GET as oauthGet } from "@/app/api/oauth/[provider]/[action]/route";
 
 const REDIRECT = "http://127.0.0.1:59653/callback";
@@ -167,5 +168,6 @@ test("OAuthModal routes devin-desktop through the callback server with a token f
   assert.ok(extractSet("PKCE_CALLBACK_SERVER_PROVIDERS").includes("devin-desktop"));
   assert.ok(extractSet("TOKEN_PASTE_PROVIDERS").includes("devin-desktop"));
   assert.ok(!extractSet("IMPORT_TOKEN_ONLY_PROVIDERS").includes("devin-desktop"));
-  assert.match(modal, /redirectUri = "http:\/\/127\.0\.0\.1:59653\/callback"/);
+  assert.match(modal, /resolveExternalRedirectUri\(provider,/);
+  assert.equal(resolveExternalRedirectUri("devin-desktop", "20128"), REDIRECT);
 });
