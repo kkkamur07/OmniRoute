@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "OmniRoute Sign-in Helper",
+  "version": "0.1.0",
+  "description": "Completes OmniRoute OAuth sign-ins on remote dashboards without copy-paste.",
+  "permissions": ["declarativeNetRequest", "storage", "scripting", "webNavigation", "alarms"],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://login.microsoftonline.com/*",
+    "https://platform.claude.com/*"
+  ],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "OmniRoute Sign-in Helper",
+    "default_popup": "src/popup.html"
+  },
+  "minimum_chrome_version": "120"
+}
