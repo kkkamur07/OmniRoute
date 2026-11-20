@@ -41,18 +41,8 @@ export const ALLOWED_REDIRECTS = Object.freeze([
     redirectUri: "https://login.microsoftonline.com/common/oauth2/nativeclient",
   }),
   Object.freeze({
-    provider: "devin-cli",
-    kind: "dashboard-port-loopback",
-    redirectUri: "http://localhost:{port}/auth/callback",
-  }),
-  Object.freeze({
     provider: "renderhour",
     kind: "dashboard-port-loopback",
     redirectUri: "http://localhost:{port}/callback",
-  }),
-  Object.freeze({
-    provider: "zed-hosted",
-    kind: "dashboard-port-loopback",
-    redirectUri: "http://127.0.0.1:{port}/",
   }),
 ]);

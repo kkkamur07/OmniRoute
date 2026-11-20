@@ -88,7 +88,10 @@ export const EXTERNAL_REDIRECTS: readonly ExternalRedirectEntry[] = [
     hostPermission: "http://127.0.0.1/*",
     bridge: "supported",
     phase: "later",
-    notes: "Loopback registered by the Devin CLI login (DEVIN_DESKTOP_CONFIG.callbackPort).",
+    notes:
+      "Loopback registered by the Devin CLI login (DEVIN_DESKTOP_CONFIG.callbackPort). " +
+      "Browser PKCE tab: state is sent and checked on paste; code + client-held verifier " +
+      "suffice for the exchange.",
   },
   {
     provider: "chatgpt",
@@ -113,9 +116,11 @@ export const EXTERNAL_REDIRECTS: readonly ExternalRedirectEntry[] = [
     kind: "dashboard-port-loopback",
     redirectUri: "http://localhost:{port}/auth/callback",
     hostPermission: "http://localhost/*",
-    bridge: "supported",
+    bridge: "unsupported",
     phase: "later",
-    notes: "Retained callback-path fallback for the retired browser flow (import-token today).",
+    notes:
+      "Import-token only: the browser authorize flow is retired (authorize returns 410) and " +
+      "OAuthModal never starts it, so there is no redirect for the extension to catch.",
   },
   {
     provider: "antigravity",
@@ -146,18 +151,21 @@ export const EXTERNAL_REDIRECTS: readonly ExternalRedirectEntry[] = [
     phase: "later",
     notes:
       "Loopback-only OAuth server (RFC 8252). On true localhost OAuthModal keeps the " +
-      "browser's own hostname (localhost or 127.0.0.1).",
+      "browser's own hostname (localhost or 127.0.0.1); remote dashboards use localhost " +
+      "with the dashboard port (20128 when the URL has none). Code + state + PKCE suffice.",
   },
   {
     provider: "zed-hosted",
     kind: "dashboard-port-loopback",
     redirectUri: "http://127.0.0.1:{port}/",
     hostPermission: "http://127.0.0.1/*",
-    bridge: "supported",
+    bridge: "unsupported",
     phase: "later",
     notes:
-      "Zed ignores redirect_uri and always lands on its native-app port; zed-hosted.ts " +
-      "reuses the dashboard loopback port, else ZED_HOSTED_CONFIG.defaultNativeAppPort.",
+      "Zed native_app_signin sends no OAuth state (zedAuth.ts createZedNativeAuthData) and " +
+      "redirects to http://127.0.0.1:<native_app_port>/?user_id&access_token (an " +
+      "RSA-encrypted token, not code/state). The bridge rule is state-keyed, so remote " +
+      "sign-in uses manual URL paste.",
   },
 ];
 

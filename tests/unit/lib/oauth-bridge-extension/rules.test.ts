@@ -156,8 +156,8 @@ test("matchAllowedRedirect: non-string input", () => {
 test("matchAllowedRedirect: default list", () => {
   assert.equal(matchAllowedRedirect("http://localhost:1455/auth/callback", "codex"), true);
   assert.equal(matchAllowedRedirect("http://localhost:1456/auth/callback", "codex"), false);
-  assert.equal(matchAllowedRedirect("http://localhost:20128/auth/callback", "devin-cli"), true);
-  assert.equal(matchAllowedRedirect("http://localhost:1234567/auth/callback", "devin-cli"), false);
+  assert.equal(matchAllowedRedirect("http://localhost:20128/callback", "renderhour"), true);
+  assert.equal(matchAllowedRedirect("http://localhost:1234567/callback", "renderhour"), false);
   assert.equal(
     matchAllowedRedirect("https://platform.claude.com/oauth/code/callback", "claude"),
     true
