@@ -13,6 +13,8 @@ import { acknowledgeChatGptPlan, shouldWelcomeChatGptPlan } from "@/shared/utils
 import OAuthBridgeWaitingStep from "./oauthModal/OAuthBridgeWaiting";
 import HelperSetupStep, { HelperUnsupportedNote } from "./oauthModal/HelperSetupStep";
 import { useHelperSetup } from "./oauthModal/useHelperSetup";
+import ProviderSignInStatus from "./oauthModal/ProviderSignInStatus";
+import { rememberSignInAttempt } from "./oauthModal/signInAttempt";
 import {
   relayedParam,
   shouldUseBridge,
@@ -68,6 +70,7 @@ function useChatGptAttempt(connectionId: string | undefined, t: Translator) {
         return;
       }
       stateRef.current = result.state;
+      rememberSignInAttempt(result.state, "chatgpt", "ChatGPT");
       setAttempt(result);
     } catch (err) {
       if (current === generation.current)
@@ -106,14 +109,17 @@ function ChatGptSignInDone({
 }) {
   return (
     <div className="space-y-4">
-      <p role="status">{t("connected")}</p>
-      {/* role="note": the connected line above is the dialog's one live status. */}
+      <ProviderSignInStatus
+        state="success"
+        providerId="chatgpt"
+        providerName="ChatGPT"
+        title={t("connected")}
+      >
+        {!showWelcome && <Button onClick={onFinish}>{t("done")}</Button>}
+      </ProviderSignInStatus>
+      {/* role="note": the connected status above is the dialog's one live status. */}
       {warning && <Alert variant="warning" role="note" dismissible={false} description={warning} />}
-      {showWelcome ? (
-        <ChatGptPlanWelcome onDismiss={onFinish} />
-      ) : (
-        <Button onClick={onFinish}>{t("done")}</Button>
-      )}
+      {showWelcome && <ChatGptPlanWelcome onDismiss={onFinish} />}
     </div>
   );
 }
@@ -333,7 +339,8 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
             <ChatGptSignInStep attempt={attempt} busy={busy} isReauth={!!connectionId} t={t} />
             {bridge.armed ? (
               <OAuthBridgeWaitingStep
-                title={tOAuth("bridgeWaitingTitle")}
+                providerId="chatgpt"
+                providerName="ChatGPT"
                 description={tOAuth("bridgeWaitingDescription")}
                 pasteInsteadLabel={tOAuth("bridgePasteInstead")}
                 onPasteInstead={() => bridge.setPasteInstead(true)}

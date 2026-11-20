@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import Icon from "./Icon";
 import { isCallbackStateAcceptable } from "./oauthCallbackState";
 import { useTranslations } from "next-intl";
 import { Tabs, TabsList, TabsTrigger } from "@omniroute/ui-kit/tabs";
@@ -30,6 +29,8 @@ import CopilotPolicyStep from "@/shared/components/oauthModal/CopilotPolicyStep"
 import OAuthBridgeWaitingStep, {
   OAuthBridgeInstallHint,
 } from "@/shared/components/oauthModal/OAuthBridgeWaiting";
+import ProviderSignInStatus from "@/shared/components/oauthModal/ProviderSignInStatus";
+import { rememberSignInAttempt } from "@/shared/components/oauthModal/signInAttempt";
 import {
   BRIDGE_DOCS_URL,
   bridgeArmRequestFrom,
@@ -283,6 +284,7 @@ function LegacyOAuthModal({
   // OmniRoute Sign-in Helper extension: carries registry redirects back to /callback.
   const { bridgeVersion, arm } = useOAuthBridge();
   const [bridgeArmed, setBridgeArmed] = useState(false);
+  const [connectedAccount, setConnectedAccount] = useState<string | null>(null);
   const callbackProcessedRef = useRef(false);
   const flowStartedRef = useRef(false);
 
@@ -338,6 +340,8 @@ function LegacyOAuthModal({
           throw new Error(details ? `${errMsg} (${details})` : String(errMsg));
         }
 
+        const conn = data.connection as { email?: string; displayName?: string } | undefined;
+        setConnectedAccount(conn?.email || conn?.displayName || null);
         setStep("success");
         onSuccess?.();
       } catch (err) {
@@ -697,6 +701,7 @@ function LegacyOAuthModal({
         }
 
         setAuthData({ ...data, redirectUri: data.redirectUri || redirectUri });
+        rememberSignInAttempt(data.state, provider, providerInfo?.name); // names it on /callback
         // Bridge: the armed extension sends the redirect for this state to our /callback.
         // Arms the server-returned redirectUri (the one inside authUrl), never the requested one.
         // Same-origin redirects (renderhour on a local dashboard) need no bridge: null.
@@ -750,6 +755,7 @@ function LegacyOAuthModal({
       copilotPolicyAcknowledged,
       bridgeVersion,
       arm,
+      providerInfo,
       t,
     ]
   );
@@ -1244,7 +1250,8 @@ function LegacyOAuthModal({
 
             {step === "waiting" && !isDeviceCode && bridgeArmed && (
               <OAuthBridgeWaitingStep
-                title={t("bridgeWaitingTitle")}
+                providerId={provider}
+                providerName={providerInfo.name}
                 description={t("bridgeWaitingDescription")}
                 pasteInsteadLabel={t("bridgePasteInstead")}
                 onPasteInstead={() => setStep("input")}
@@ -1303,18 +1310,16 @@ function LegacyOAuthModal({
 
         {/* Success Step — shown for both OAuth and paste-token flows */}
         {step === "success" && (
-          <div className="text-center py-6">
-            <div className="size-16 mx-auto mb-4 rounded-full bg-success/10 flex items-center justify-center">
-              <Icon name="check_circle" size={30} className="text-success" />
-            </div>
-            <h3 className="text-lg mb-2">{t("success")}</h3>
-            <p className="text-sm text-text-muted mb-4">
-              {t("successMessage", { providerName: providerInfo.name })}
-            </p>
+          <ProviderSignInStatus
+            state="success"
+            providerId={provider}
+            providerName={providerInfo.name}
+            account={connectedAccount}
+          >
             <Button onClick={handleClose} fullWidth>
               {t("done")}
             </Button>
-          </div>
+          </ProviderSignInStatus>
         )}
 
         {/* LAN-IP loopback mismatch (#8046) — dedicated panel; retrying this origin cannot succeed. */}
