@@ -21,7 +21,7 @@ import {
   isValidState,
   parseArmMessage,
   readyMessage,
-} from "../../../packages/oauth-bridge-extension/src/protocol.js";
+} from "../../../../packages/oauth-bridge-extension/src/protocol.js";
 
 const nonStrings: unknown[] = [undefined, null, 1, true, {}, [], ["a"]];
 

@@ -85,7 +85,7 @@ function area(store: Map<string, unknown>) {
   },
 };
 
-const bg = await import("../../../packages/oauth-bridge-extension/src/background.js");
+const bg = await import("../../../../packages/oauth-bridge-extension/src/background.js");
 
 const ORIGIN = "http://localhost:20128";
 const CODEX = "http://localhost:1455/auth/callback";

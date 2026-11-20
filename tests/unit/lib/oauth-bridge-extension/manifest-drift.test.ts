@@ -5,9 +5,9 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { EXTERNAL_REDIRECTS } from "../../../src/lib/oauth/externalRedirects.ts";
+import { EXTERNAL_REDIRECTS } from "../../../../src/lib/oauth/externalRedirects.ts";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const EXT = path.join(ROOT, "packages", "oauth-bridge-extension");
 const manifest = JSON.parse(fs.readFileSync(path.join(EXT, "manifest.json"), "utf8"));
 

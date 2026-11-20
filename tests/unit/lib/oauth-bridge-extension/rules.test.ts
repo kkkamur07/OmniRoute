@@ -6,7 +6,7 @@ import {
   buildRegexFilter,
   escapeRegex,
   matchAllowedRedirect,
-} from "../../../packages/oauth-bridge-extension/src/rules.js";
+} from "../../../../packages/oauth-bridge-extension/src/rules.js";
 
 const REDIRECT = "http://localhost:1455/auth/callback";
 const DASH = "http://localhost:20128";
