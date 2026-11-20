@@ -15,14 +15,14 @@
  * and src/app/callback/page.tsx relays code/state to the open OAuthModal as usual.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getExternalRedirect } from "@/lib/oauth/externalRedirects";
 
 export const BRIDGE_SOURCE = "omniroute-oauth-bridge";
 export const DASHBOARD_SOURCE = "omniroute-dashboard";
 export const BRIDGE_ARM_TIMEOUT_MS = 1500;
-/** Registry phases the dashboard bridges today; phase B widens this in one place. */
-export const BRIDGE_ENABLED_PHASES = ["major"] as const;
+/** Registry phases the dashboard bridges (phase B enabled "later"); the one place to gate. */
+export const BRIDGE_ENABLED_PHASES = ["major", "later"] as const;
 
 /** Docs section the "install the helper" hint links to. */
 export const BRIDGE_DOCS_URL =
@@ -192,4 +192,119 @@ export function useOAuthBridge(): {
   }, []);
 
   return { bridgeVersion, arm };
+}
+
+/** True when the dashboard is open on the operator's own machine (no bridge needed). */
+export function isTrueLocalhostHost(hostname: string | undefined): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+/** Payload src/app/callback/page.tsx relays (postMessage data / BroadcastChannel / localStorage). */
+export type OAuthCallbackRelay = {
+  code?: string | null;
+  state?: string | null;
+  error?: string | null;
+  fullUrl?: string;
+};
+
+export const CALLBACK_RELAY_KEY = "oauth_callback";
+/** A stored relay older than this is stale (a previous attempt) and is ignored. */
+export const CALLBACK_RELAY_MAX_AGE_MS = 30_000;
+
+/** The relay payload when it belongs to `state`, else null (other flows share the channel). */
+export function relayForState(
+  raw: unknown,
+  state: string | null | undefined
+): OAuthCallbackRelay | null {
+  if (!state || !raw || typeof raw !== "object") return null;
+  const data = raw as Record<string, unknown>;
+  if (data.state !== state) return null;
+  const str = (value: unknown) => (typeof value === "string" ? value : null);
+  return {
+    code: str(data.code),
+    state,
+    error: str(data.error),
+    fullUrl: typeof data.fullUrl === "string" ? data.fullUrl : undefined,
+  };
+}
+
+/** A stored (localStorage) relay for `state` that is still fresh, else null. */
+export function storedRelayForState(
+  raw: string | null,
+  state: string | null | undefined,
+  now: number = Date.now()
+): OAuthCallbackRelay | null {
+  try {
+    const data = raw ? JSON.parse(raw) : null;
+    const timestamp = typeof data?.timestamp === "number" ? data.timestamp : 0;
+    if (now - timestamp > CALLBACK_RELAY_MAX_AGE_MS) return null;
+    return relayForState(data, state);
+  } catch {
+    return null;
+  }
+}
+
+/** One query parameter of the relayed `fullUrl` (e.g. ChatGPT's client_id), if present. */
+export function relayedParam(fullUrl: string | undefined, key: string): string | undefined {
+  try {
+    return new URL(fullUrl || "").searchParams.get(key) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Listens for the /callback relay (same-origin postMessage, BroadcastChannel, storage) and calls
+ * `onCallback` once with the payload whose state equals `state`. Inactive while `state` is empty.
+ */
+export function useOAuthCallbackRelay(
+  state: string | null | undefined,
+  onCallback: (relay: OAuthCallbackRelay) => void
+): void {
+  const handlerRef = useRef(onCallback);
+  useEffect(() => {
+    handlerRef.current = onCallback;
+  });
+
+  useEffect(() => {
+    if (!state || typeof window === "undefined") return undefined;
+    let handled = false;
+    const deliver = (relay: OAuthCallbackRelay | null) => {
+      if (handled || !relay) return;
+      handled = true;
+      try {
+        localStorage.removeItem(CALLBACK_RELAY_KEY);
+      } catch {
+        // Storage unavailable: nothing to clean up.
+      }
+      handlerRef.current(relay);
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.data?.type !== CALLBACK_RELAY_KEY)
+        return;
+      deliver(relayForState(event.data.data, state));
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === CALLBACK_RELAY_KEY) deliver(storedRelayForState(event.newValue, state));
+    };
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel(CALLBACK_RELAY_KEY);
+      channel.onmessage = (event) => deliver(relayForState(event.data, state));
+    } catch {
+      channel = null;
+    }
+    window.addEventListener("message", onMessage);
+    window.addEventListener("storage", onStorage);
+    try {
+      deliver(storedRelayForState(localStorage.getItem(CALLBACK_RELAY_KEY), state));
+    } catch {
+      // Storage unavailable: the other channels and the paste fallback still work.
+    }
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("storage", onStorage);
+      channel?.close();
+    };
+  }, [state]);
 }
