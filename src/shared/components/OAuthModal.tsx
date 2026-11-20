@@ -760,6 +760,7 @@ function LegacyOAuthModal({
     bridgeVersion,
     active: !!isOpen && step === "helper-setup",
     popupName: "oauth_auth",
+    abandoned: !isOpen || step === "error" || step === "loopback-mismatch",
     onContinue: startOAuthFlow,
   });
   const helperGate = helper.gate;

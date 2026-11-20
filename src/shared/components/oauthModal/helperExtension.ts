@@ -18,7 +18,7 @@ export const HELPER_PING_NAME = "omniroute-oauth-bridge";
  * unpacked developer build and the packed build share it. The Chrome Web Store ID replaces this
  * value once the extension is published. Override with NEXT_PUBLIC_OAUTH_HELPER_EXTENSION_ID.
  */
-const DEFAULT_EXTENSION_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const DEFAULT_EXTENSION_ID = "gmckjokkoeeokoldknjmaipdbnceldil";
 
 const EXTENSION_ID_RE = /^[a-p]{32}$/;
 
@@ -128,6 +128,31 @@ export function openApproveWindow(
     );
   } catch {
     return null;
+  }
+}
+
+/** The subset of a window `closeIfBlank` touches. */
+export type PreopenedWindow = { closed?: boolean; close: () => void; location: { href: string } };
+
+/**
+ * Closes a window pre-opened on about:blank when the sign-in failed before the provider page was
+ * loaded into it. A window that navigated away (cross-origin reads throw) is left alone.
+ * @returns true when the window was closed.
+ */
+export function closeIfBlank(win: PreopenedWindow | null | undefined): boolean {
+  if (!win || win.closed) return false;
+  let blank = false;
+  try {
+    blank = win.location.href === "about:blank";
+  } catch {
+    blank = false;
+  }
+  if (!blank) return false;
+  try {
+    win.close();
+    return true;
+  } catch {
+    return false;
   }
 }
 

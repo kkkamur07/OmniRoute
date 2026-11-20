@@ -8,6 +8,7 @@ import {
   HELPER_PING_NAME,
   OAUTH_HELPER_EXTENSION_ID,
   OAUTH_HELPER_STORE_URL,
+  closeIfBlank,
   helperApproveUrl,
   helperPingUrl,
   helperSetupView,
@@ -37,7 +38,7 @@ function pingFetch(body: unknown, ok = true) {
 }
 
 test("extension id, store url and resource urls", () => {
-  assert.match(OAUTH_HELPER_EXTENSION_ID, /^[a-p]{32}$/);
+  assert.equal(OAUTH_HELPER_EXTENSION_ID, "gmckjokkoeeokoldknjmaipdbnceldil");
   assert.ok(OAUTH_HELPER_STORE_URL.endsWith(OAUTH_HELPER_EXTENSION_ID));
   assert.equal(helperPingUrl("abc"), "chrome-extension://abc/ping.json");
   assert.equal(
@@ -184,4 +185,48 @@ test("dismiss choice round-trips through storage and tolerates broken storage", 
   assert.equal(readHelperDismissed(broken), false);
   assert.doesNotThrow(() => writeHelperDismissed(broken));
   assert.equal(readHelperDismissed(null), false);
+});
+
+test("closeIfBlank closes only a pre-opened window still on about:blank", () => {
+  const make = (href: string | (() => string), closed = false) => {
+    const win = {
+      closed,
+      closeCalls: 0,
+      close() {
+        win.closeCalls += 1;
+        win.closed = true;
+      },
+      location: {} as { href: string },
+    };
+    Object.defineProperty(win.location, "href", {
+      get: typeof href === "function" ? href : () => href,
+    });
+    return win;
+  };
+  const blank = make("about:blank");
+  assert.equal(closeIfBlank(blank), true);
+  assert.equal(blank.closeCalls, 1);
+  assert.equal(closeIfBlank(blank), false, "already closed");
+  assert.equal(blank.closeCalls, 1);
+
+  const crossOrigin = make(() => {
+    throw new DOMException("Blocked a frame", "SecurityError");
+  });
+  assert.equal(closeIfBlank(crossOrigin), false, "provider page loaded");
+  assert.equal(crossOrigin.closeCalls, 0);
+
+  const navigated = make("https://auth.openai.com/authorize");
+  assert.equal(closeIfBlank(navigated), false);
+  assert.equal(navigated.closeCalls, 0);
+
+  assert.equal(closeIfBlank(make("about:blank", true)), false);
+  assert.equal(closeIfBlank(null), false);
+  assert.equal(closeIfBlank(undefined), false);
+  const throwing = {
+    location: { href: "about:blank" },
+    close: () => {
+      throw new Error("nope");
+    },
+  };
+  assert.equal(closeIfBlank(throwing), false);
 });

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   HELPER_POLL_INTERVAL_MS,
   OAUTH_HELPER_STORE_URL,
+  closeIfBlank,
   helperSetupView,
   openApproveWindow,
   probeHelper,
@@ -11,6 +12,7 @@ import {
   writeHelperDismissed,
   type HelperProbe,
   type HelperSetupView,
+  type PreopenedWindow,
 } from "./helperExtension";
 import { isTrueLocalhostHost, shouldShowBridgeHint } from "./useOAuthBridge";
 
@@ -28,6 +30,11 @@ export type UseHelperSetupOptions = {
    * the flow can continue without a click; when that is blocked a Continue button is shown.
    */
   popupName?: string;
+  /**
+   * The sign-in stopped before the provider page loaded (error step, dialog closed). A window
+   * pre-opened for `popupName` that is still blank is then closed.
+   */
+  abandoned?: boolean;
 };
 
 export type HelperSetup = {
@@ -46,7 +53,7 @@ export type HelperSetup = {
 
 /** Shared state for the Sign-in Helper setup step (OAuthModal, ChatGPT, M365 dialogs). */
 export function useHelperSetup(opts: UseHelperSetupOptions): HelperSetup {
-  const { provider, bridgeVersion, active, popupName } = opts;
+  const { provider, bridgeVersion, active, popupName, abandoned } = opts;
   const isTrueLocalhost =
     opts.isTrueLocalhost ?? isTrueLocalhostHost(globalThis.location?.hostname);
   const eligibleProvider = shouldShowBridgeHint({ provider, isTrueLocalhost, bridgeVersion: null });
@@ -56,6 +63,7 @@ export function useHelperSetup(opts: UseHelperSetupOptions): HelperSetup {
   const [dismissed, setDismissed] = useState(() => readHelperDismissed());
   const [awaitingContinue, setAwaitingContinue] = useState(false);
   const setupShownRef = useRef(false);
+  const preopenedRef = useRef<PreopenedWindow | null>(null);
   const continueRef = useRef(opts.onContinue);
   useEffect(() => {
     continueRef.current = opts.onContinue;
@@ -128,9 +136,19 @@ export function useHelperSetup(opts: UseHelperSetupOptions): HelperSetup {
         opened = null;
       }
     }
-    if (opened) resume();
-    else setAwaitingContinue(true);
+    if (opened) {
+      preopenedRef.current = opened as PreopenedWindow;
+      resume();
+    } else setAwaitingContinue(true);
   }, [bridgeVersion, dismissed, popupName]);
+
+  // A failed or cancelled continuation must not leave an empty tab behind.
+  useEffect(() => {
+    if (!abandoned || !preopenedRef.current) return;
+    closeIfBlank(preopenedRef.current);
+    preopenedRef.current = null;
+  }, [abandoned]);
+  useEffect(() => () => void closeIfBlank(preopenedRef.current), []);
 
   const gate = useCallback(async () => {
     if (!eligibleProvider || readHelperDismissed()) return false;
