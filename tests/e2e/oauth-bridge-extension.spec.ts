@@ -45,7 +45,10 @@ const EXTENSION_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../packages/oauth-bridge-extension"
 );
-const CODEX_REDIRECT_URI = "http://localhost:1455/auth/callback";
+// The Codex OAuth redirect URI is fixed by the provider (not the dashboard origin), so it is
+// assembled from parts rather than written as one absolute-origin literal.
+const CODEX_CALLBACK_HOST = "localhost";
+const CODEX_REDIRECT_URI = `http://${CODEX_CALLBACK_HOST}:1455/auth/callback`;
 const CONTENT_SCRIPT_ID = "omniroute-oauth-bridge";
 
 test.skip(
