@@ -39,6 +39,10 @@ import {
   shouldUseBridge,
   useOAuthBridge,
 } from "@/shared/components/oauthModal/useOAuthBridge";
+import HelperSetupStep, {
+  HelperUnsupportedNote,
+} from "@/shared/components/oauthModal/HelperSetupStep";
+import { useHelperSetup } from "@/shared/components/oauthModal/useHelperSetup";
 import { getPasteTokenCopyKeys } from "@/shared/components/oauthModal/pasteTokenCopy";
 import { parseGrokCliPasteToken } from "@/lib/oauth/utils/grokCliAuthJson";
 import { buildGoogleLoopbackHint } from "@/lib/oauth/utils/googleLoopbackHint";
@@ -755,6 +759,17 @@ function LegacyOAuthModal({
       t,
     ]
   );
+  // Sign-in Helper onboarding (browser flows only; device-code providers never bridge).
+  const helper = useHelperSetup({
+    provider: DEVICE_CODE_PROVIDERS.has(provider) ? undefined : provider,
+    isTrueLocalhost,
+    bridgeVersion,
+    active: !!isOpen && step === "helper-setup",
+    popupName: "oauth_auth",
+    abandoned: !isOpen || step === "error" || step === "loopback-mismatch",
+    onContinue: startOAuthFlow,
+  });
+  const helperGate = helper.gate;
 
   useEffect(() => {
     if (!deviceCodeExpiresAt) return;
@@ -843,10 +858,12 @@ function LegacyOAuthModal({
     }
     flowStartedRef.current = true;
     const run = async () => {
-      if (!startsInPasteMode) startOAuthFlow();
+      if (startsInPasteMode) return;
+      if (await helperGate()) setStep("helper-setup");
+      else startOAuthFlow();
     };
     run();
-  }, [isOpen, provider, startOAuthFlow]);
+  }, [isOpen, provider, startOAuthFlow, helperGate]);
 
   // Listen for OAuth callback via multiple methods
   useEffect(() => {
@@ -1227,6 +1244,10 @@ function LegacyOAuthModal({
               <GitlabDuoSetupStep onContinue={() => void startOAuthFlow()} onClose={handleClose} />
             )}
 
+            {step === "helper-setup" && (
+              <HelperSetupStep helper={helper} onPasteInstead={() => startOAuthFlow()} />
+            )}
+
             {step === "waiting" && !isDeviceCode && bridgeArmed && (
               <OAuthBridgeWaitingStep
                 providerId={provider}
@@ -1262,6 +1283,7 @@ function LegacyOAuthModal({
               shouldShowBridgeHint({ provider, isTrueLocalhost, bridgeVersion }) && (
                 <OAuthBridgeInstallHint label={t("bridgeInstallHint")} href={BRIDGE_DOCS_URL} />
               )}
+            {step === "input" && !isDeviceCode && <HelperUnsupportedNote helper={helper} />}
 
             {/* Manual Input Step */}
             {step === "input" && !isDeviceCode && (

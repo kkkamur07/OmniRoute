@@ -263,11 +263,25 @@ sign-in's `state`, one-shot, expires after 10 minutes) and sends the tab to your
 in the other tab" and completes by itself. No OmniRoute secret or token is given to the
 extension.
 
-**Install:** from the repo, open `chrome://extensions`, enable Developer mode, click "Load
-unpacked", and choose the `packages/oauth-bridge-extension` folder.
+**Install and approve (one click each):** in a Chromium browser (Chrome, Edge, Brave), click
+Connect on a supported provider. When the helper is missing, the dialog shows "Add OmniRoute
+Sign-in Helper", which opens the extension's store page in a new tab. After you add it, the
+dialog notices by itself (it checks every 2 seconds) and shows "Allow on <your host>". That
+button opens a small window that names your dashboard origin; click Allow there and accept the
+browser prompt (one time per dashboard origin). The dialog then detects the helper without a
+reload and continues the sign-in. If the browser blocks the provider tab from opening on its
+own, click Continue.
 
-**Approve your dashboard:** open the extension popup while on your dashboard tab and approve
-that origin (one time per dashboard origin).
+You can always choose "Paste the link instead", and tick "Always paste the link" to stop
+seeing the setup step (stored in this browser's localStorage). Firefox and Safari skip the
+setup step and go straight to the paste flow with a one-line note.
+
+**Developer install:** from the repo, open `chrome://extensions`, enable Developer mode, click
+"Load unpacked", and choose the `packages/oauth-bridge-extension` folder. The manifest `key`
+keeps the same extension ID, so the dashboard detects it. A self-hosted build with a different
+ID sets `NEXT_PUBLIC_OAUTH_HELPER_EXTENSION_ID` (and optionally
+`NEXT_PUBLIC_OAUTH_HELPER_STORE_URL`) at build time. You can still approve a dashboard from the
+extension popup while on the dashboard tab.
 
 **Supported providers:** mainly `codex` / `openai`, `claude`, `xai-oauth` and `grok-cli`. The
 registry in `src/lib/oauth/externalRedirects.ts` also marks `devin-desktop`, `chatgpt`
