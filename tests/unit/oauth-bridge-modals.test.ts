@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -77,21 +78,24 @@ test("phase gate and bridge decisions", () => {
   assert.deepEqual([...BRIDGE_ENABLED_PHASES], ["major", "later"]);
   for (const provider of ["chatgpt", "copilot-m365-web"]) {
     assert.equal(isBridgeSupportedProvider(provider), true);
-    assert.equal(
-      shouldUseBridge({ provider, isTrueLocalhost: false, bridgeVersion: "1.0.0" }),
-      true
-    );
-    assert.equal(
-      shouldUseBridge({ provider, isTrueLocalhost: true, bridgeVersion: "1.0.0" }),
-      false
-    );
-    assert.equal(shouldUseBridge({ provider, isTrueLocalhost: false, bridgeVersion: null }), false);
+    // Any host, true localhost included: the extension intercepts the loopback redirect.
+    assert.equal(shouldUseBridge({ provider, bridgeVersion: "1.0.0" }), true);
+    assert.equal(shouldUseBridge({ provider, bridgeVersion: null }), false);
     assert.equal(
       shouldShowBridgeHint({ provider, isTrueLocalhost: false, bridgeVersion: null }),
       true
     );
   }
   assert.equal(isBridgeSupportedProvider("antigravity"), false);
+  assert.equal(shouldUseBridge({ provider: "antigravity", bridgeVersion: "1.0.0" }), false);
+});
+
+test("modals call the shared shouldUseBridge without isTrueLocalhost", () => {
+  for (const file of ["ChatGptOAuthModal.tsx", "M365OAuthModal.tsx"]) {
+    const src = readFileSync(`src/shared/components/${file}`, "utf8");
+    assert.match(src, /shouldUseBridge\(\{[^}]*bridgeVersion/);
+    assert.doesNotMatch(src, /isTrueLocalhost/);
+  }
 });
 
 test("M365 relay rebuild yields a nativeclient URL with one code and the state", () => {

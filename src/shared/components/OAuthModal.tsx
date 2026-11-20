@@ -32,7 +32,9 @@ import OAuthBridgeWaitingStep, {
 } from "@/shared/components/oauthModal/OAuthBridgeWaiting";
 import {
   BRIDGE_DOCS_URL,
+  bridgeArmRequestFrom,
   shouldShowBridgeHint,
+  shouldStartLocalCallbackServer,
   shouldUseBridge,
   useOAuthBridge,
 } from "@/shared/components/oauthModal/useOAuthBridge";
@@ -457,7 +459,7 @@ function LegacyOAuthModal({
   const startOAuthFlow = useCallback(
     async (opts?: { grokBrowser?: boolean; manualLoopback?: boolean }) => {
       if (!provider) return;
-      const useBridge = shouldUseBridge({ provider, isTrueLocalhost, bridgeVersion });
+      const useBridge = shouldUseBridge({ provider, bridgeVersion });
       try {
         setError(null);
 
@@ -542,6 +544,14 @@ function LegacyOAuthModal({
         }
 
         let forceManual = false;
+        const hasCallbackServer = PKCE_CALLBACK_SERVER_PROVIDERS.has(provider);
+        // With the extension the bridge owns the redirect, so the local server is skipped.
+        const startLocalServer = shouldStartLocalCallbackServer({
+          provider,
+          isTrueLocalhost,
+          bridgeVersion,
+          hasCallbackServer,
+        });
 
         // Claude Code and Cline OAuth flows can finish on provider-hosted pages that
         // show an auth code instead of redirecting back to OmniRoute.
@@ -561,70 +571,76 @@ function LegacyOAuthModal({
         }
 
         // PKCE callback server providers (Codex and Grok Build):
-        // On localhost, spin up a local callback server and poll for the result.
+        // On true localhost without the bridge, spin up a local callback server and poll.
         // Each provider owns its registered loopback callback. A LAN IP warns (#8046).
         // On remote the server is unreachable — fall through to standard manual flow.
-        if (PKCE_CALLBACK_SERVER_PROVIDERS.has(provider)) {
-          if (isTrueLocalhost) {
-            try {
-              const serverRes = await fetch(`/api/oauth/${provider}/start-callback-server`);
-              const serverData = (await parseResponseBody(serverRes)) as Record<string, unknown>;
-              if (!serverRes.ok)
-                throw new Error(
-                  getErrorMessage(serverData, serverRes.status, t("errorCallbackServerFailed"))
-                );
-
-              if (typeof serverData.authUrl !== "string" || !serverData.authUrl) {
-                throw new Error(errorMessageFromBody(serverData, t("errorBrowserUnavailable")));
-              }
-              setAuthData({ ...serverData, redirectUri: serverData.redirectUri });
-              setStep("waiting");
-              popupRef.current = window.open(serverData.authUrl, "oauth_auth");
-
-              // If browser blocked the popup, switch to manual input step immediately
-              if (!popupRef.current) {
-                setStep("input");
-              }
-
-              setPolling(true);
-              const maxAttempts = 150;
-              for (let i = 0; i < maxAttempts; i++) {
-                await new Promise((r) => setTimeout(r, 2000));
-
-                const pollRes = await fetch(`/api/oauth/${provider}/poll-callback`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ connectionId: reauthConnection?.id }),
-                });
-                const pollData = (await parseResponseBody(pollRes)) as Record<string, unknown>;
-
-                if (pollData.success) {
-                  setStep("success");
-                  setPolling(false);
-                  onSuccess?.();
-                  return;
-                }
-
-                if (pollData.error && !pollData.pending) {
-                  throw new Error(
-                    String(
-                      pollData.errorDescription ||
-                        errorMessageFromBody(pollData, t("errorAuthorizationFailed"))
-                    )
-                  );
-                }
-              }
-
-              setPolling(false);
-              throw new Error(t("errorAuthorizationTimeout"));
-            } catch (pkceErr) {
-              console.warn(
-                `${provider} callback server failed, falling back to manual flow`,
-                pkceErr
+        // Local callback server: true once the sign-in completed; false sends it to manual.
+        const runLocalCallbackServer = async (): Promise<boolean> => {
+          try {
+            const serverRes = await fetch(`/api/oauth/${provider}/start-callback-server`);
+            const serverData = (await parseResponseBody(serverRes)) as Record<string, unknown>;
+            if (!serverRes.ok)
+              throw new Error(
+                getErrorMessage(serverData, serverRes.status, t("errorCallbackServerFailed"))
               );
-              setPolling(false);
-              forceManual = true;
+
+            if (typeof serverData.authUrl !== "string" || !serverData.authUrl) {
+              throw new Error(errorMessageFromBody(serverData, t("errorBrowserUnavailable")));
             }
+            setAuthData({ ...serverData, redirectUri: serverData.redirectUri });
+            setStep("waiting");
+            popupRef.current = window.open(serverData.authUrl, "oauth_auth");
+
+            // If browser blocked the popup, switch to manual input step immediately
+            if (!popupRef.current) {
+              setStep("input");
+            }
+
+            setPolling(true);
+            const maxAttempts = 150;
+            for (let i = 0; i < maxAttempts; i++) {
+              await new Promise((r) => setTimeout(r, 2000));
+
+              const pollRes = await fetch(`/api/oauth/${provider}/poll-callback`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ connectionId: reauthConnection?.id }),
+              });
+              const pollData = (await parseResponseBody(pollRes)) as Record<string, unknown>;
+
+              if (pollData.success) {
+                setStep("success");
+                setPolling(false);
+                onSuccess?.();
+                return true;
+              }
+
+              if (pollData.error && !pollData.pending) {
+                throw new Error(
+                  String(
+                    pollData.errorDescription ||
+                      errorMessageFromBody(pollData, t("errorAuthorizationFailed"))
+                  )
+                );
+              }
+            }
+
+            setPolling(false);
+            throw new Error(t("errorAuthorizationTimeout"));
+          } catch (pkceErr) {
+            console.warn(
+              `${provider} callback server failed, falling back to manual flow`,
+              pkceErr
+            );
+            setPolling(false);
+            return false;
+          }
+        };
+
+        if (hasCallbackServer) {
+          if (startLocalServer) {
+            if (await runLocalCallbackServer()) return;
+            forceManual = true;
           } else if (isLocalhost && !opts?.manualLoopback && !useBridge) {
             setLoopbackHint(buildPkceLoopbackMismatchHint(provider, loopbackLocation));
             setStep("loopback-mismatch");
@@ -678,20 +694,22 @@ function LegacyOAuthModal({
 
         setAuthData({ ...data, redirectUri: data.redirectUri || redirectUri });
         // Bridge: the armed extension sends the redirect for this state to our /callback.
-        const armed =
-          useBridge &&
-          typeof data.state === "string" &&
-          !!data.state &&
-          (await arm({
-            provider,
-            state: data.state,
-            redirectUri: String(data.redirectUri || redirectUri),
-          }));
+        // Arms the server-returned redirectUri (the one inside authUrl), never the requested one.
+        // Same-origin redirects (renderhour on a local dashboard) need no bridge: null.
+        const armRequest = bridgeArmRequestFrom(provider, data, window.location.origin);
+        const armed = useBridge && !!armRequest && (await arm(armRequest));
         setBridgeArmed(armed);
         if (armed) {
           popupRef.current = null; // the extension closes the tab; no popup-closed fallback
           setStep(window.open(data.authUrl, "oauth_auth") ? "waiting" : "input");
           return;
+        }
+        // Not armed on true localhost after skipping the local server: nothing listens on the
+        // provider's loopback, so run the server now (base flow), else fall back to manual paste.
+        if (hasCallbackServer && isTrueLocalhost && !startLocalServer) {
+          if (await runLocalCallbackServer()) return;
+          forceManual = true;
+          setAuthData({ ...data, redirectUri: data.redirectUri || redirectUri });
         }
 
         // For non-true-localhost (LAN IPs, remote) or manual fallback: use manual input mode (user pastes callback URL)
