@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import messages from "@/i18n/messages/en.json";
 
@@ -69,5 +69,13 @@ describe("OAuth callback page status screens", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Sign-in failed");
     expect(screen.getByText("User cancelled")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Back to OmniRoute" })).toBeInTheDocument();
+  });
+
+  it("Back to OmniRoute tries to close the tab before navigating", async () => {
+    const close = vi.spyOn(window, "close").mockImplementation(() => {});
+    await renderAt("/callback?error=access_denied&state=state-3");
+    fireEvent.click(screen.getByRole("button", { name: "Back to OmniRoute" }));
+    expect(close).toHaveBeenCalled();
+    close.mockRestore();
   });
 });

@@ -5,6 +5,7 @@ import Card from "@/shared/components/Card";
 import Icon from "@/shared/components/Icon";
 import { Spinner } from "@/shared/components/Loading";
 import ProviderSignInStatus from "@/shared/components/oauthModal/ProviderSignInStatus";
+import { returnToDashboard } from "@/shared/components/oauthModal/returnToDashboard";
 import {
   takeSignInAttempt,
   type SignInAttempt,
@@ -230,7 +231,7 @@ export default function CallbackPage() {
             providerName={attempt?.providerName}
             description={providerError || ts("statusFailedFallback")}
           >
-            <Button onClick={() => window.location.assign("/dashboard")} fullWidth>
+            <Button onClick={() => returnToDashboard()} fullWidth>
               {ts("statusBackToOmniRoute")}
             </Button>
           </ProviderSignInStatus>
