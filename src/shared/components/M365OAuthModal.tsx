@@ -7,6 +7,8 @@ import Modal from "./Modal";
 import Button from "./Button";
 import Input from "./Input";
 import OAuthBridgeWaitingStep from "./oauthModal/OAuthBridgeWaiting";
+import HelperSetupStep, { HelperUnsupportedNote } from "./oauthModal/HelperSetupStep";
+import { useHelperSetup } from "./oauthModal/useHelperSetup";
 import {
   shouldUseBridge,
   useOAuthBridge,
@@ -183,9 +185,13 @@ function useM365OAuthFlow({ onClose, onSuccess, connectionId }: Props) {
     void exchange(attempt, buildNativeRedirectUrl(relay.code, attempt.state));
   });
 
+  const helper = useHelperSetup({
+    ...{ provider: PROVIDER, bridgeVersion, active: status === "idle" && !attempt },
+    onContinue: prepare,
+  });
   return {
     ...{ attempt, credentialUrl, setCredentialUrl, status, error, close, prepare, submit },
-    ...{ bridgeArmed, setBridgeArmed },
+    ...{ bridgeArmed, setBridgeArmed, helper },
   };
 }
 
@@ -249,9 +255,12 @@ export default function M365OAuthModal(props: Props) {
                 pasteInsteadLabel={t("bridgePasteInstead")}
                 onPasteInstead={() => flow.setBridgeArmed(false)}
               />
+            ) : flow.helper.view !== "none" ? (
+              <HelperSetupStep helper={flow.helper} onPasteInstead={() => {}} />
             ) : (
               <M365SignInInstructions />
             )}
+            <HelperUnsupportedNote helper={flow.helper} />
             {status === "preparing" && <p role="status">{t("m365Preparing")}</p>}
             {attempt && !flow.bridgeArmed && (
               <>

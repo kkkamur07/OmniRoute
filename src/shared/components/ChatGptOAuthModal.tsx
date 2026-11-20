@@ -11,6 +11,8 @@ import ChatGptSignInButton from "./ChatGptSignInButton";
 import { ChatGptPlanWelcome } from "./ChatGptPlanUi";
 import { acknowledgeChatGptPlan, shouldWelcomeChatGptPlan } from "@/shared/utils/chatgptPlanUi";
 import OAuthBridgeWaitingStep from "./oauthModal/OAuthBridgeWaiting";
+import HelperSetupStep, { HelperUnsupportedNote } from "./oauthModal/HelperSetupStep";
+import { useHelperSetup } from "./oauthModal/useHelperSetup";
 import {
   relayedParam,
   shouldUseBridge,
@@ -271,7 +273,11 @@ function useChatGptBridge(state: string | undefined) {
       live = false;
     };
   }, [state, bridgeVersion, arm]);
-  return { armed: !!state && armedState === state && !pasteInstead, setPasteInstead };
+  return {
+    armed: !!state && armedState === state && !pasteInstead,
+    setPasteInstead,
+    bridgeVersion,
+  };
 }
 
 function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Props) {
@@ -283,6 +289,11 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
   const { warning, callbackUrl, setCallbackUrl, done, showWelcome, complete, completeRelayed } =
     useChatGptCompletion(lifecycle, connectionId, t);
   const bridge = useChatGptBridge(attempt?.state);
+  const helper = useHelperSetup({
+    provider: "chatgpt",
+    bridgeVersion: bridge.bridgeVersion,
+    active: isOpen,
+  });
   useOAuthCallbackRelay(attempt?.state, (relay) => {
     // Back to the callback step: it shows progress, errors and Start over.
     bridge.setPasteInstead(true);
@@ -327,6 +338,8 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
                 pasteInsteadLabel={tOAuth("bridgePasteInstead")}
                 onPasteInstead={() => bridge.setPasteInstead(true)}
               />
+            ) : helper.view !== "none" ? (
+              <HelperSetupStep helper={helper} onPasteInstead={() => {}} />
             ) : (
               <ChatGptCallbackStep
                 attempt={attempt}
@@ -338,6 +351,7 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
                 t={t}
               />
             )}
+            <HelperUnsupportedNote helper={helper} />
             {error && <Alert variant="critical" dismissible={false} description={error} />}
           </>
         )}
