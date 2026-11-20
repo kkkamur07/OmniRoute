@@ -5,6 +5,7 @@ import {
   buildRedirectRule,
   buildRegexFilter,
   escapeRegex,
+  isArmableRedirect,
   matchAllowedRedirect,
 } from "../../../../packages/oauth-bridge-extension/src/rules.js";
 
@@ -164,4 +165,65 @@ test("matchAllowedRedirect: default list", () => {
   );
   assert.equal(matchAllowedRedirect("http://localhost:1455/auth/callback", "antigravity"), false);
   assert.equal(matchAllowedRedirect("http://localhost:51121/oauth-callback", "antigravity"), false);
+});
+
+const REJECTED = { ok: false, reason: "redirect-not-allowed" };
+const armable = (uri: unknown, provider = "codex", dashboardOrigin?: string) =>
+  isArmableRedirect(uri as string, provider, undefined, { dashboardOrigin });
+
+test("isArmableRedirect: accepts exact list entries and loopback variants", () => {
+  const ok = { ok: true };
+  assert.deepEqual(armable("http://localhost:1455/auth/callback"), ok);
+  assert.deepEqual(armable("https://platform.claude.com/oauth/code/callback", "claude"), ok);
+  assert.deepEqual(armable("http://localhost:20128/callback", "renderhour"), ok);
+  assert.deepEqual(armable("http://localhost:1456/auth/callback"), ok);
+  assert.deepEqual(armable("http://localhost:1455/oauth/cb"), ok);
+  assert.deepEqual(armable("http://localhost/any/path"), ok);
+  assert.deepEqual(armable("http://127.0.0.1:4242/new/path"), ok);
+  assert.deepEqual(armable("http://127.0.0.1:65535/x"), ok);
+  assert.deepEqual(armable("https://platform.claude.com/oauth/code/v2/callback"), ok);
+  assert.deepEqual(armable("https://login.microsoftonline.com/other/path", "copilot-m365-web"), ok);
+});
+
+test("isArmableRedirect: rejects disallowed redirect URIs", () => {
+  const cases: unknown[] = [
+    "https://evil.example/callback",
+    "http://192.168.1.5:1455/x",
+    "http://user:pw@127.0.0.1:1/",
+    "http://user@localhost:1455/x",
+    "file:///etc/passwd",
+    "javascript:alert(1)",
+    `http://localhost:1455/${"a".repeat(2100)}`,
+    "http://localhost:1455/cb#x",
+    "http://localhost:1455/cb?a=1",
+    "http://[::1]:1455/cb",
+    "https://localhost:1455/cb",
+    "http://localhost:0/cb",
+    "http://localhost:65536/cb",
+    undefined,
+    null,
+    42,
+    "not a url",
+    "https://platform.claude.com.evil.example/x",
+    "http://platform.claude.com/oauth/code/callback",
+    "https://platform.claude.com/x?a=1",
+    "https://platform.claude.com/x#f",
+    "https://user:pw@platform.claude.com/x",
+  ];
+  for (const c of cases) assert.deepEqual(armable(c), REJECTED, String(c).slice(0, 60));
+});
+
+test("isArmableRedirect: rejects the dashboard origin itself", () => {
+  assert.deepEqual(
+    armable("https://dash.example.com/callback", "codex", "https://dash.example.com"),
+    REJECTED
+  );
+  assert.deepEqual(
+    armable("http://localhost:20128/callback", "codex", "http://localhost:20128"),
+    REJECTED
+  );
+  assert.deepEqual(
+    armable("http://localhost:20128/callback", "renderhour", "http://localhost:20128"),
+    REJECTED
+  );
 });

@@ -219,7 +219,7 @@ test("a callback with a different state is not redirected", async () => {
   await page.close();
 });
 
-test("a redirect URI not allow-listed for the provider is rejected", async () => {
+test("a redirect URI outside the safety policy is rejected", async () => {
   const page = await openDashboard();
   const reply = await page.evaluate(
     () =>
@@ -236,7 +236,7 @@ test("a redirect URI not allow-listed for the provider is rejected", async () =>
             requestId: "req-3",
             provider: "codex",
             state: "s3",
-            redirectUri: "http://localhost:9999/evil",
+            redirectUri: "https://evil.example/callback",
           },
           location.origin
         );

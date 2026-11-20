@@ -2,8 +2,10 @@
  * OmniRoute OAuth bridge: service worker.
  *
  * The dashboard (through content.js) arms the extension for ONE sign-in. For that sign-in a
- * declarativeNetRequest session rule redirects the provider's final redirect (an allow-listed
- * loopback or code page URI carrying `state=<armed state>`) to `<dashboard-origin>/callback`,
+ * declarativeNetRequest session rule redirects the provider's final redirect (a URI accepted by
+ * isArmableRedirect in rules.js: an exact allow-list match, a bare http loopback URI on
+ * 127.0.0.1 or localhost, or a bare https URI on an allow-listed provider code page origin,
+ * never the dashboard origin itself, carrying `state=<armed state>`) to `<dashboard-origin>/callback`,
  * keeping the original query. When the tab commits that /callback URL the rule is removed and,
  * if the navigation came from our redirect, the tab is closed a few seconds later.
  *
@@ -20,7 +22,7 @@
  */
 
 import { MSG_ARM, REASONS, RULE_TTL_MINUTES, isValidOrigin, parseArmMessage } from "./protocol.js";
-import { buildRedirectRule, matchAllowedRedirect } from "./rules.js";
+import { buildRedirectRule, isArmableRedirect } from "./rules.js";
 
 const APPROVED_ORIGINS_KEY = "approvedOrigins";
 const ARMED_KEY = "armed";
@@ -86,7 +88,7 @@ async function disarm(ruleId) {
 /**
  * Handles an arm request from content.js. The dashboard origin is taken only from
  * `sender.origin` and must be in "approvedOrigins"; the payload is validated with
- * parseArmMessage and the redirect URI must be allow-listed for the provider. On success one
+ * parseArmMessage and the redirect URI must pass isArmableRedirect. On success one
  * session redirect rule is added (replacing any rule already armed for the same state), its
  * metadata is stored under "armed" and a TTL alarm is created.
  * @returns {Promise<{ok: true} | {ok: false, reason: string}>}
@@ -101,7 +103,8 @@ export async function handleArm(message, sender) {
     const parsed = parseArmMessage(message);
     if (!parsed.ok) return fail(parsed.reason);
     const { provider, state, redirectUri } = parsed.value;
-    if (!matchAllowedRedirect(redirectUri, provider)) return fail(REASONS.redirectNotAllowed);
+    const redirectCheck = isArmableRedirect(redirectUri, provider, undefined, { dashboardOrigin });
+    if (!redirectCheck.ok) return fail(redirectCheck.reason);
 
     return await serialized(async () => {
       const dnr = api().declarativeNetRequest;

@@ -86,6 +86,8 @@ function area(store: Map<string, unknown>) {
 };
 
 const bg = await import("../../../../packages/oauth-bridge-extension/src/background.js");
+const { escapeRegex: bg_escape } =
+  await import("../../../../packages/oauth-bridge-extension/src/rules.js");
 
 const ORIGIN = "http://localhost:20128";
 const CODEX = "http://localhost:1455/auth/callback";
@@ -162,11 +164,13 @@ test("rejects non-allowed redirect URIs and invalid messages", async () => {
   reset();
   const bad = { ok: false, reason: "redirect-not-allowed" };
   assert.deepEqual(
-    await bg.handleArm(msg({ redirectUri: "http://localhost:1456/auth/callback" }), sender),
+    await bg.handleArm(msg({ redirectUri: "https://evil.example/auth/callback" }), sender),
     bad
   );
-  assert.deepEqual(await bg.handleArm(msg({ provider: "nope" }), sender), bad);
-  assert.deepEqual(await bg.handleArm(msg({ provider: "claude" }), sender), bad);
+  assert.deepEqual(
+    await bg.handleArm(msg({ provider: "claude", redirectUri: "https://evil.example/x" }), sender),
+    bad
+  );
   assert.deepEqual(await bg.handleArm(msg({ state: "" }), sender), {
     ok: false,
     reason: "invalid-message",
@@ -175,6 +179,23 @@ test("rejects non-allowed redirect URIs and invalid messages", async () => {
     ok: false,
     reason: "invalid-message",
   });
+  assert.equal(mock.rules.length, 0);
+});
+
+test("arm accepts a loopback URI that is not in the list", async () => {
+  reset();
+  const uri = "http://127.0.0.1:4242/new/path";
+  assert.deepEqual(await bg.handleArm(msg({ redirectUri: uri }), sender), { ok: true });
+  assert.equal(mock.rules.length, 1);
+  assert.ok(mock.rules[0].condition.regexFilter.startsWith(`^${bg_escape(uri)}`));
+});
+
+test("arm rejects a redirectUri on the dashboard origin itself", async () => {
+  reset();
+  assert.deepEqual(
+    await bg.handleArm(msg({ redirectUri: "http://localhost:20128/callback" }), sender),
+    { ok: false, reason: "redirect-not-allowed" }
+  );
   assert.equal(mock.rules.length, 0);
 });
 

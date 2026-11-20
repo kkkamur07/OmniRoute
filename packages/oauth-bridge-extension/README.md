@@ -59,6 +59,25 @@ Unsupported:
 
 If the extension is not installed, the dashboard's paste flow still works as before.
 
+## How it stays working across OmniRoute updates
+
+The extension does not hard-code exact callback URLs. It accepts the redirect URI the approved
+dashboard armed with when it is:
+
+- in the generated list (exact match, or the `{port}` template), or
+- loopback: `http:` on exactly `127.0.0.1` or `localhost`, any port 1-65535, any path, or
+- `https:` on the exact origin of a known provider code page from the generated list, any path.
+
+URIs with userinfo, a query or a fragment, other schemes, other https origins, `[::1]`, the
+dashboard's own origin and URIs over 2048 characters are always rejected. The redirect rule is
+still built from the exact armed URI, requires the armed state, matches the main frame only, fires
+once and expires after 10 minutes.
+
+A changed callback port or path in a new OmniRoute release needs no extension update. Only a new
+provider code-page origin needs a new extension build (a new `host_permissions` entry). CI
+(`npm run check:oauth-bridge` and `tests/unit/lib/oauth-bridge-extension/manifest-drift.test.ts`)
+fails in that case, so it cannot ship silently.
+
 ## Privacy
 
 - Nothing leaves the browser except the redirect to your own dashboard.
