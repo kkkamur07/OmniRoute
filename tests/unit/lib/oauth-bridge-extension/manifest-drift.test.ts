@@ -169,3 +169,11 @@ test("store package excludes tests and docs and drops the manifest key", async (
     fs.rmSync(out, { recursive: true, force: true });
   }
 });
+
+test("extension pages cannot be framed", () => {
+  assert.deepEqual(manifest.content_security_policy, {
+    extension_pages: "script-src 'self'; object-src 'self'; frame-ancestors 'none'",
+  });
+  const html = fs.readFileSync(path.join(EXT, "approve.html"), "utf8");
+  assert.match(html, /<button id="allow"[^>]*\sdisabled[\s>]/);
+});

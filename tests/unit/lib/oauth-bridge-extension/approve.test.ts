@@ -169,3 +169,38 @@ test("approve-origin stores the origin, registers and injects into open tabs", a
   await handleApproveOrigin({ type: "approve-origin", origin: DASH }, pageSender);
   assert.deepEqual(mock.local.get("approvedOrigins"), ["https://old.example.com", DASH]);
 });
+
+test("isFramed: top-level is not framed, iframes and throwing accessors are", async () => {
+  const { isFramed } = await import("../../../../packages/oauth-bridge-extension/src/approve.js");
+  const top = {} as { top?: unknown; self?: unknown };
+  top.top = top;
+  top.self = top;
+  assert.equal(isFramed(top), false);
+  assert.equal(isFramed({ top: {}, self: {} }), true);
+  const crossOrigin = {
+    self: {},
+    get top() {
+      throw new Error("SecurityError");
+    },
+  };
+  assert.equal(isFramed(crossOrigin), true);
+  assert.equal(isFramed(null), true);
+});
+
+test("enableAfterDelay keeps the Allow button disabled for ENABLE_DELAY_MS", async () => {
+  const { enableAfterDelay, ENABLE_DELAY_MS } =
+    await import("../../../../packages/oauth-bridge-extension/src/approve.js");
+  assert.ok(ENABLE_DELAY_MS >= 500);
+  const button = { disabled: false };
+  let pending: (() => void) | null = null;
+  let delay = -1;
+  enableAfterDelay(button, ENABLE_DELAY_MS, (fn: () => void, ms: number) => {
+    pending = fn;
+    delay = ms;
+    return 0;
+  });
+  assert.equal(button.disabled, true);
+  assert.equal(delay, ENABLE_DELAY_MS);
+  pending!();
+  assert.equal(button.disabled, false);
+});

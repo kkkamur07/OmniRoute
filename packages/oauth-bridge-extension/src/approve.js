@@ -3,11 +3,42 @@
  * window.open. Shows the origin and one "Allow on <host>" button. The click handler requests
  * the host permission directly (it must run inside the user gesture), then asks the service
  * worker to store the approval and inject the content script into open dashboard tabs.
+ *
+ * Clickjacking defenses: the page refuses to render the button when framed (isFramed, plus
+ * `frame-ancestors 'none'` in the manifest CSP), and the button stays disabled for
+ * ENABLE_DELAY_MS after it appears so a click aimed at a decoy cannot land on it.
  */
 
 import { approveOriginFromSearch } from "./origin.js";
 import { MSG_APPROVE_ORIGIN } from "./protocol.js";
+
 const CLOSE_DELAY_MS = 1500;
+export const ENABLE_DELAY_MS = 500;
+
+/**
+ * True when `win` is not the top-level window. A cross-origin parent can make the comparison
+ * throw; that counts as framed.
+ * @param {{ top?: unknown, self?: unknown } | null | undefined} win
+ */
+export function isFramed(win) {
+  try {
+    if (!win) return true;
+    return win.top !== win.self;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Disables `button` now and enables it after `delayMs`, using `setTimer` (setTimeout).
+ * @returns the timer handle
+ */
+export function enableAfterDelay(button, delayMs = ENABLE_DELAY_MS, setTimer = setTimeout) {
+  button.disabled = true;
+  return setTimer(() => {
+    button.disabled = false;
+  }, delayMs);
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -52,6 +83,12 @@ function onAllowClick(origin) {
 }
 
 function init() {
+  if (isFramed(window)) {
+    $("invalid").textContent =
+      "This page cannot be used inside another site. Open it from your OmniRoute dashboard.";
+    $("invalid").hidden = false;
+    return;
+  }
   const origin = approveOriginFromSearch(location.search);
   if (!origin) {
     $("invalid").hidden = false;
@@ -62,6 +99,7 @@ function init() {
   $("allow").textContent = `Allow on ${host}`;
   $("allow").addEventListener("click", () => onAllowClick(origin));
   $("ask").hidden = false;
+  enableAfterDelay($("allow"));
   document.title = `Allow on ${host}`;
 }
 

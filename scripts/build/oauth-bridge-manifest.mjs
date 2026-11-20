@@ -35,6 +35,12 @@ export const WEB_ACCESSIBLE_RESOURCES = [
   },
 ];
 
+// frame-ancestors 'none' keeps approve.html (web-accessible to every site) out of iframes, so
+// a site cannot overlay a decoy on its Allow button. script-src / object-src are the MV3 minimum.
+export const CONTENT_SECURITY_POLICY = {
+  extension_pages: "script-src 'self'; object-src 'self'; frame-ancestors 'none'",
+};
+
 export const BASE_MANIFEST = {
   manifest_version: 3,
   name: "OmniRoute Sign-in Helper",
@@ -54,6 +60,7 @@ export const BASE_MANIFEST = {
   background: { service_worker: "src/background.js", type: "module" },
   action: { default_title: "OmniRoute Sign-in Helper", default_popup: "src/popup.html" },
   web_accessible_resources: WEB_ACCESSIBLE_RESOURCES,
+  content_security_policy: CONTENT_SECURITY_POLICY,
   minimum_chrome_version: "120",
   key: MANIFEST_KEY,
 };
@@ -63,8 +70,8 @@ const supported = () => EXTERNAL_REDIRECTS.filter((e) => e.bridge === "supported
 export function buildManifest(existing) {
   const base = existing && typeof existing === "object" ? existing : BASE_MANIFEST;
   const hostPermissions = [...new Set(supported().map((e) => e.hostPermission))].sort();
-  // permissions, web_accessible_resources and key always come from BASE_MANIFEST so a change
-  // here reaches the checked-in file.
+  // permissions, web_accessible_resources, content_security_policy and key always come from
+  // BASE_MANIFEST so a change here reaches the checked-in file.
   return (
     JSON.stringify(
       {
@@ -72,6 +79,7 @@ export function buildManifest(existing) {
         permissions: BASE_MANIFEST.permissions,
         host_permissions: hostPermissions,
         web_accessible_resources: BASE_MANIFEST.web_accessible_resources,
+        content_security_policy: BASE_MANIFEST.content_security_policy,
         minimum_chrome_version: BASE_MANIFEST.minimum_chrome_version,
         key: BASE_MANIFEST.key,
       },
