@@ -12,7 +12,6 @@ import { ChatGptPlanWelcome } from "./ChatGptPlanUi";
 import { acknowledgeChatGptPlan, shouldWelcomeChatGptPlan } from "@/shared/utils/chatgptPlanUi";
 import OAuthBridgeWaitingStep from "./oauthModal/OAuthBridgeWaiting";
 import {
-  isTrueLocalhostHost,
   relayedParam,
   shouldUseBridge,
   useOAuthBridge,
@@ -257,15 +256,13 @@ function useChatGptCompletion(
   return { warning, callbackUrl, setCallbackUrl, done, showWelcome, complete, completeRelayed };
 }
 
-/** Arms the Sign-in Helper for each new attempt when the dashboard is remote. */
+/** Arms the Sign-in Helper for each new attempt whenever the extension is present (any host). */
 function useChatGptBridge(state: string | undefined) {
   const { bridgeVersion, arm } = useOAuthBridge();
   const [armedState, setArmedState] = useState<string | null>(null);
   const [pasteInstead, setPasteInstead] = useState(false);
   useEffect(() => {
-    const isTrueLocalhost = isTrueLocalhostHost(window.location.hostname);
-    if (!state || !shouldUseBridge({ provider: "chatgpt", isTrueLocalhost, bridgeVersion }))
-      return undefined;
+    if (!state || !shouldUseBridge({ provider: "chatgpt", bridgeVersion })) return undefined;
     let live = true;
     void arm({ provider: "chatgpt", state, redirectUri }).then((ok) => {
       if (live) setArmedState(ok ? state : null);

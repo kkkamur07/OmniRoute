@@ -270,16 +270,16 @@ unpacked", and choose the `packages/oauth-bridge-extension` folder.
 that origin (one time per dashboard origin).
 
 **Supported providers:** mainly `codex` / `openai`, `claude`, `xai-oauth` and `grok-cli`. The
-registry in `src/lib/oauth/externalRedirects.ts` also marks `devin-desktop`, `chatgpt`,
-`copilot-m365-web`, `devin-cli`, `renderhour` and `zed-hosted` as `bridge: "supported"`; the
-dashboard integration currently covers the providers that use the standard Connect dialog.
+registry in `src/lib/oauth/externalRedirects.ts` also marks `devin-desktop`, `chatgpt`
+(ChatGPT web), `copilot-m365-web` and `renderhour` as `bridge: "supported"`.
 **Not supported:** `antigravity` and `agy` (Google consent hangs without a live loopback
 listener; use the options in
-[Connecting Antigravity on a remote install](#connecting-antigravity-on-a-remote-install)).
+[Connecting Antigravity on a remote install](#connecting-antigravity-on-a-remote-install)),
+`zed-hosted` (manual URL paste) and `devin-cli` (token import only).
 
 **Fallback:** without the extension (or if arming fails within about 1.5 s) the dialog keeps
-the existing paste flow. While waiting, "Paste the URL manually instead" switches to it. On
-true localhost the ChatGPT web and Microsoft 365 dialogs do not use the extension.
+its existing flow: the local callback server on true localhost for providers that have one,
+the paste flow elsewhere. While waiting, "Paste the URL manually instead" switches to it.
 
 ### Works with any OmniRoute
 
@@ -289,9 +289,11 @@ true localhost the ChatGPT web and Microsoft 365 dialogs do not use the extensio
   1455 published).
 - The dashboard sends the helper the exact redirect URI the server's `/authorize` step
   returned. It never guesses one from the browser address.
-- On true localhost, the standard sign-in dialog uses OmniRoute's own local callback server
-  when it starts for that attempt (codex, xai-oauth, grok-cli, devin-desktop); otherwise it
-  uses the helper if installed. The install hint is only shown on remote dashboards.
+- With the extension installed, every dialog uses it for a supported provider, on localhost
+  too, and does not start OmniRoute's own local callback server. Without the extension a true
+  localhost install keeps the local callback server (codex, xai-oauth, grok-cli,
+  devin-desktop). A redirect that already lands on the dashboard's own origin skips the
+  helper. The install hint is only shown on remote dashboards.
 - To see how every OAuth provider signs in (helper, dashboard callback, device code, token
   import, or manual paste), run `npm run oauth:categories`. The source is
   `src/lib/oauth/onboardingCategories.ts`.

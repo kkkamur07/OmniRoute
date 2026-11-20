@@ -8,7 +8,6 @@ import Button from "./Button";
 import Input from "./Input";
 import OAuthBridgeWaitingStep from "./oauthModal/OAuthBridgeWaiting";
 import {
-  isTrueLocalhostHost,
   shouldUseBridge,
   useOAuthBridge,
   useOAuthCallbackRelay,
@@ -121,10 +120,9 @@ function useM365OAuthFlow({ onClose, onSuccess, connectionId }: Props) {
     try {
       const nextAttempt = await fetchAttempt(connectionId, controller.signal);
       if (!nextAttempt || controller.signal.aborted) return;
-      const isTrueLocalhost = isTrueLocalhostHost(window.location.hostname);
       // Bridge: the armed extension sends the nativeclient redirect for this state to /callback.
       const armed =
-        shouldUseBridge({ provider: PROVIDER, isTrueLocalhost, bridgeVersion }) &&
+        shouldUseBridge({ provider: PROVIDER, bridgeVersion }) &&
         (await arm({
           provider: PROVIDER,
           state: nextAttempt.state,

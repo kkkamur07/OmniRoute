@@ -88,42 +88,58 @@ export function isBridgeSupportedProvider(provider: string | undefined): boolean
   );
 }
 
-/** Use the bridge only off true-localhost, with the extension present, for supported providers. */
+/**
+ * The one bridge gate for every sign-in dialog: extension present and provider
+ * bridge-supported, on any host (true localhost included). The extension intercepts the
+ * loopback redirect before any network request, so it works for npm-local and Docker-local
+ * alike. When this is true the dialog skips OmniRoute's own local callback server.
+ */
 export function shouldUseBridge(opts: {
   provider: string | undefined;
-  isTrueLocalhost: boolean;
   bridgeVersion: string | null | undefined;
 }): boolean {
-  return !opts.isTrueLocalhost && !!opts.bridgeVersion && isBridgeSupportedProvider(opts.provider);
+  return !!opts.bridgeVersion && isBridgeSupportedProvider(opts.provider);
 }
 
 /**
- * OAuthModal's per-attempt gate. Off true localhost it is shouldUseBridge. On true localhost the
- * bridge is used too (extension present, supported provider) unless this attempt successfully
- * started OmniRoute's own local callback server, which then owns the redirect alone.
+ * OAuthModal: start OmniRoute's own local callback server for this attempt? Only for a
+ * provider that has one, on true localhost, and only when the bridge is not used. With the
+ * extension present the server is skipped on every host: in Docker on localhost it would
+ * start inside the container on an unpublished port the host browser cannot reach.
  */
-export function shouldUseBridgeForAttempt(opts: {
+export function shouldStartLocalCallbackServer(opts: {
   provider: string | undefined;
   isTrueLocalhost: boolean;
   bridgeVersion: string | null | undefined;
-  localCallbackServerStarted: boolean;
+  hasCallbackServer: boolean;
 }): boolean {
-  if (!opts.bridgeVersion || !isBridgeSupportedProvider(opts.provider)) return false;
-  return !opts.isTrueLocalhost || !opts.localCallbackServerStarted;
+  return (
+    opts.hasCallbackServer &&
+    opts.isTrueLocalhost &&
+    !shouldUseBridge({ provider: opts.provider, bridgeVersion: opts.bridgeVersion })
+  );
 }
 
 /**
  * The arm request for an /authorize response: its own state and redirectUri, never a
- * client-computed fallback. Null when either is missing (the attempt then skips the bridge).
+ * client-computed fallback. Null when either is missing, when redirectUri does not parse, or
+ * when it is the dashboard's own origin (the redirect already lands on /callback and the
+ * extension rejects it); the attempt then skips the bridge.
  */
 export function bridgeArmRequestFrom(
   provider: string,
-  data: Record<string, unknown> | null | undefined
+  data: Record<string, unknown> | null | undefined,
+  dashboardOrigin: string
 ): BridgeArmRequest | null {
   const state = data?.state;
   const redirectUri = data?.redirectUri;
   if (typeof state !== "string" || !state) return null;
   if (typeof redirectUri !== "string" || !redirectUri) return null;
+  try {
+    if (new URL(redirectUri).origin === dashboardOrigin) return null;
+  } catch {
+    return null;
+  }
   return { provider, state, redirectUri };
 }
 
