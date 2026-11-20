@@ -6,7 +6,15 @@ import { z } from "zod";
 import Modal from "./Modal";
 import Button from "./Button";
 import Input from "./Input";
+import OAuthBridgeWaitingStep from "./oauthModal/OAuthBridgeWaiting";
+import {
+  isTrueLocalhostHost,
+  shouldUseBridge,
+  useOAuthBridge,
+  useOAuthCallbackRelay,
+} from "./oauthModal/useOAuthBridge";
 
+const PROVIDER = "copilot-m365-web";
 const NATIVE_REDIRECT = "https://login.microsoftonline.com/common/oauth2/nativeclient";
 const attemptSchema = z.object({
   authUrl: z.url().refine((value) => {
@@ -87,6 +95,8 @@ function useM365OAuthFlow({ onClose, onSuccess, connectionId }: Props) {
     "idle"
   );
   const [error, setError] = useState<string | null>(null);
+  const { bridgeVersion, arm } = useOAuthBridge();
+  const [bridgeArmed, setBridgeArmed] = useState(false);
   const active = useRef<AbortController | null>(null);
   useEffect(() => () => active.current?.abort(), []);
 
@@ -96,6 +106,7 @@ function useM365OAuthFlow({ onClose, onSuccess, connectionId }: Props) {
     setAttempt(null);
     setCredentialUrl("");
     setError(null);
+    setBridgeArmed(false);
     setStatus("idle");
   };
   const close = () => {
@@ -110,20 +121,31 @@ function useM365OAuthFlow({ onClose, onSuccess, connectionId }: Props) {
     try {
       const nextAttempt = await fetchAttempt(connectionId, controller.signal);
       if (!nextAttempt || controller.signal.aborted) return;
+      const isTrueLocalhost = isTrueLocalhostHost(window.location.hostname);
+      // Bridge: the armed extension sends the nativeclient redirect for this state to /callback.
+      const armed =
+        shouldUseBridge({ provider: PROVIDER, isTrueLocalhost, bridgeVersion }) &&
+        (await arm({
+          provider: PROVIDER,
+          state: nextAttempt.state,
+          redirectUri: nextAttempt.redirectUri,
+        }));
+      if (controller.signal.aborted) return;
       setAttempt(nextAttempt);
+      setBridgeArmed(armed);
       setStatus("ready");
+      if (armed) window.open(nextAttempt.authUrl, "_blank", "noopener,noreferrer");
     } catch {
       if (controller.signal.aborted) return;
       setError(t("m365PrepareError"));
       setStatus("idle");
     }
   };
-  const submit = async () => {
-    if (!attempt || status !== "ready") return;
+  const exchange = async (current: Attempt, code: string) => {
     setError(null);
-    const code = credentialUrl.trim();
+    setBridgeArmed(false);
     try {
-      validateCallback(code, attempt.state);
+      validateCallback(code, current.state);
     } catch {
       setError(t("m365InvalidCallback"));
       return;
@@ -133,7 +155,7 @@ function useM365OAuthFlow({ onClose, onSuccess, connectionId }: Props) {
     active.current = controller;
     setStatus("exchanging");
     try {
-      await exchangeAttempt(attempt, code, connectionId, controller.signal);
+      await exchangeAttempt(current, code, connectionId, controller.signal);
       if (controller.signal.aborted) return;
       setCredentialUrl("");
       setAttempt(null);
@@ -148,7 +170,30 @@ function useM365OAuthFlow({ onClose, onSuccess, connectionId }: Props) {
     }
   };
 
-  return { attempt, credentialUrl, setCredentialUrl, status, error, close, prepare, submit };
+  const submit = async () => {
+    if (!attempt || status !== "ready") return;
+    await exchange(attempt, credentialUrl.trim());
+  };
+  // Sign-in Helper relay: rebuild the nativeclient URL the exchange expects from code + state.
+  useOAuthCallbackRelay(status === "ready" ? attempt?.state : undefined, (relay) => {
+    if (!attempt) return;
+    if (relay.error || !relay.code) {
+      setBridgeArmed(false);
+      setError(t("m365ExchangeError"));
+      return;
+    }
+    void exchange(attempt, buildNativeRedirectUrl(relay.code, attempt.state));
+  });
+
+  return {
+    ...{ attempt, credentialUrl, setCredentialUrl, status, error, close, prepare, submit },
+    ...{ bridgeArmed, setBridgeArmed },
+  };
+}
+
+/** The nativeclient redirect URL (what the manual paste carries) for a relayed code + state. */
+export function buildNativeRedirectUrl(code: string, state: string): string {
+  return `${NATIVE_REDIRECT}?${new URLSearchParams({ code, state })}`;
 }
 
 function M365AttemptExpiry({ expiresAt }: { expiresAt?: number }) {
@@ -186,8 +231,8 @@ function M365SignInInstructions() {
 
 export default function M365OAuthModal(props: Props) {
   const t = useTranslations("oauthModal");
-  const { attempt, credentialUrl, setCredentialUrl, status, error, close, prepare, submit } =
-    useM365OAuthFlow(props);
+  const flow = useM365OAuthFlow(props);
+  const { attempt, credentialUrl, setCredentialUrl, status, error, close, prepare, submit } = flow;
 
   return (
     <Modal isOpen onClose={close} title={t("m365Title")} size="lg">
@@ -199,9 +244,18 @@ export default function M365OAuthModal(props: Props) {
           </>
         ) : (
           <>
-            <M365SignInInstructions />
+            {flow.bridgeArmed ? (
+              <OAuthBridgeWaitingStep
+                title={t("bridgeWaitingTitle")}
+                description={t("bridgeWaitingDescription")}
+                pasteInsteadLabel={t("bridgePasteInstead")}
+                onPasteInstead={() => flow.setBridgeArmed(false)}
+              />
+            ) : (
+              <M365SignInInstructions />
+            )}
             {status === "preparing" && <p role="status">{t("m365Preparing")}</p>}
-            {attempt && (
+            {attempt && !flow.bridgeArmed && (
               <>
                 <a
                   href="about:blank"

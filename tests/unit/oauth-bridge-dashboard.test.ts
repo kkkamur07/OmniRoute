@@ -114,7 +114,7 @@ test("isBridgeReplyMessage rejects mismatches and non-reply messages", () => {
 });
 
 test("shouldUseBridge matrix", () => {
-  for (const provider of ["codex", "openai", "claude", "xai-oauth", "grok-cli"]) {
+  for (const provider of ["codex", "openai", "claude", "xai-oauth", "grok-cli", "chatgpt"]) {
     assert.equal(
       shouldUseBridge({ provider, isTrueLocalhost: false, bridgeVersion: "1.0.0" }),
       true,
@@ -164,7 +164,7 @@ test("isBridgeSupportedProvider agrees with the registry", () => {
   for (const entry of EXTERNAL_REDIRECTS) {
     assert.equal(
       isBridgeSupportedProvider(entry.provider),
-      entry.bridge === "supported" && entry.phase === "major",
+      entry.bridge === "supported" && ["major", "later"].includes(entry.phase),
       entry.provider
     );
   }
@@ -183,16 +183,16 @@ test("bridge constants", () => {
   assert.ok(BRIDGE_DOCS_URL.endsWith("#sign-in-helper-extension"));
 });
 
-test("only major-phase providers are bridged (phase gate)", () => {
-  assert.deepEqual([...BRIDGE_ENABLED_PHASES], ["major"]);
-  for (const provider of ["zed-hosted", "devin-desktop", "devin-cli", "renderhour"]) {
+test("major and later phase providers are bridged; unsupported ones never (phase gate)", () => {
+  assert.deepEqual([...BRIDGE_ENABLED_PHASES], ["major", "later"]);
+  for (const provider of ["antigravity", "agy", "not-a-provider"]) {
     for (const bridgeVersion of ["1.0.0", null]) {
       const opts = { provider, isTrueLocalhost: false, bridgeVersion };
       assert.equal(shouldUseBridge(opts), false, `${provider} use ${bridgeVersion}`);
       assert.equal(shouldShowBridgeHint(opts), false, `${provider} hint ${bridgeVersion}`);
     }
   }
-  for (const provider of ["codex", "openai", "claude", "xai-oauth", "grok-cli"]) {
+  for (const provider of ["codex", "openai", "claude", "xai-oauth", "grok-cli", "chatgpt"]) {
     assert.equal(
       shouldUseBridge({ provider, isTrueLocalhost: false, bridgeVersion: "1.0.0" }),
       true,
