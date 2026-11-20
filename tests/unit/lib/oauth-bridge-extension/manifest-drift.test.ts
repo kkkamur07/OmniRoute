@@ -5,6 +5,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import crypto from "node:crypto";
+
 import { EXTERNAL_REDIRECTS } from "../../../../src/lib/oauth/externalRedirects.ts";
 import { ALLOWED_REDIRECTS } from "../../../../packages/oauth-bridge-extension/src/allowedRedirects.generated.js";
 
@@ -94,5 +96,76 @@ test("README provider section is delimited and lists every registry provider", (
     } else {
       assert.ok(unsupportedPart.includes(`\`${e.provider}\``), e.provider);
     }
+  }
+});
+
+test("manifest key pins the documented extension ID", async () => {
+  assert.equal(typeof manifest.key, "string");
+  assert.ok(!/PRIVATE/.test(manifest.key));
+  const der = Buffer.from(manifest.key, "base64");
+  // Parses as an RSA SubjectPublicKeyInfo.
+  const pub = crypto.createPublicKey({ key: der, format: "der", type: "spki" });
+  assert.equal(pub.asymmetricKeyType, "rsa");
+  const hex = crypto.createHash("sha256").update(der).digest("hex").slice(0, 32);
+  const id = [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join("");
+  const gen = await import("../../../../scripts/build/oauth-bridge-manifest.mjs");
+  assert.equal(id, gen.EXTENSION_ID);
+  const readme = fs.readFileSync(path.join(EXT, "README.md"), "utf8");
+  assert.ok(readme.includes(id), "README records the extension ID");
+});
+
+test("web_accessible_resources expose ping.json and the approve page only", () => {
+  assert.deepEqual(manifest.web_accessible_resources, [
+    {
+      resources: ["ping.json", "approve.html", "src/approve.js", "src/approve.css"],
+      matches: ["<all_urls>"],
+    },
+  ]);
+  for (const r of manifest.web_accessible_resources[0].resources) {
+    assert.ok(fs.existsSync(path.join(EXT, r)), r);
+  }
+  const ping = JSON.parse(fs.readFileSync(path.join(EXT, "ping.json"), "utf8"));
+  assert.deepEqual(ping, { name: "omniroute-oauth-bridge", version: 1 });
+  const html = fs.readFileSync(path.join(EXT, "approve.html"), "utf8");
+  assert.match(html, /src="src\/approve\.js"/);
+  assert.match(html, /href="src\/approve\.css"/);
+});
+
+test("store package excludes tests and docs and drops the manifest key", async () => {
+  const pkg = await import("../../../../scripts/build/oauth-bridge-package.mjs");
+  const files: string[] = pkg.listPackageFiles();
+  assert.ok(files.includes("manifest.json"));
+  assert.ok(files.includes("ping.json"));
+  assert.ok(files.includes("approve.html"));
+  assert.ok(files.includes("src/background.js"));
+  assert.ok(!files.some((f) => /README|\.test\./.test(f)));
+  const os = await import("node:os");
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "obx-pkg-"));
+  try {
+    const { file } = pkg.packageExtension({ outDir: out });
+    const zip = fs.readFileSync(file);
+    assert.equal(zip.readUInt32LE(0), 0x04034b50);
+    // Walk the local file headers and inflate manifest.json.
+    const zlib = await import("node:zlib");
+    const names: string[] = [];
+    let packaged: Record<string, unknown> | null = null;
+    for (let at = 0; zip.readUInt32LE(at) === 0x04034b50;) {
+      const size = zip.readUInt32LE(at + 18);
+      const nameLen = zip.readUInt16LE(at + 26);
+      const extraLen = zip.readUInt16LE(at + 28);
+      const name = zip.subarray(at + 30, at + 30 + nameLen).toString("utf8");
+      const start = at + 30 + nameLen + extraLen;
+      names.push(name);
+      if (name === "manifest.json") {
+        packaged = JSON.parse(zlib.inflateRawSync(zip.subarray(start, start + size)).toString());
+      }
+      at = start + size;
+    }
+    assert.deepEqual(names, files);
+    assert.ok(packaged);
+    assert.equal(packaged.key, undefined);
+    assert.deepEqual(packaged.web_accessible_resources, manifest.web_accessible_resources);
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true });
   }
 });
