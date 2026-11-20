@@ -45,4 +45,11 @@ export const ALLOWED_REDIRECTS = Object.freeze([
     kind: "dashboard-port-loopback",
     redirectUri: "http://localhost:{port}/callback",
   }),
+  Object.freeze({
+    provider: "zed-hosted",
+    kind: "dashboard-port-loopback",
+    redirectUri: "http://127.0.0.1:{port}/",
+    stateMode: "appended",
+    requiredParams: Object.freeze(["user_id", "access_token"]),
+  }),
 ]);

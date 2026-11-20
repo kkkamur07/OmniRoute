@@ -305,3 +305,108 @@ test("syncContentScripts registers for granted origins and unregisters when none
   assert.deepEqual(mock.scriptCalls, ["register", "update", "unregister"]);
   assert.equal(mock.scripts.length, 0);
 });
+
+const ZED_ALLOWED = [
+  {
+    provider: "zed-hosted",
+    kind: "dashboard-port-loopback",
+    redirectUri: "http://127.0.0.1:{port}/",
+    stateMode: "appended",
+    requiredParams: ["user_id", "access_token"],
+  },
+  { provider: "codex", kind: "fixed-loopback", redirectUri: CODEX },
+];
+const ZED_URI = "http://127.0.0.1:58443/";
+const zedMsg = (over: Record<string, unknown> = {}) =>
+  msg({ provider: "zed-hosted", redirectUri: ZED_URI, state: "zst4te", ...over });
+const armZed = (over: Record<string, unknown> = {}) =>
+  bg.handleArm(zedMsg(over), sender, { allowed: ZED_ALLOWED });
+const zedRules = () =>
+  mock.rules.filter((r) => r.action.redirect.regexSubstitution.includes("&state="));
+
+test("arming zed builds the appended-state rule", async () => {
+  reset();
+  assert.deepEqual(await armZed(), { ok: true });
+  assert.equal(mock.rules.length, 1);
+  const rule = mock.rules[0];
+  assert.equal(rule.action.redirect.regexSubstitution, `${ORIGIN}/callback?\\1&state=zst4te`);
+  const re = new RegExp(rule.condition.regexFilter);
+  assert.ok(re.test(`${ZED_URI}?user_id=1&access_token=abc`));
+  assert.ok(re.test(`${ZED_URI}?access_token=abc&user_id=1`));
+  assert.equal(re.test(`${ZED_URI}?user_id=1`), false);
+  const armed = mock.session.get("armed") as Record<string, Record<string, unknown>>;
+  assert.equal(armed[rule.id].provider, "zed-hosted");
+  assert.equal(armed[rule.id].stateMode, "appended");
+  assert.deepEqual(mock.alarms.get(`oauth-bridge-rule-${rule.id}`), { delayInMinutes: 10 });
+});
+
+test("arming zed rejects a loopback URI that is not the exact allow-list entry", async () => {
+  reset();
+  const bad = { ok: false, reason: "redirect-not-allowed" };
+  assert.deepEqual(await armZed({ redirectUri: "http://127.0.0.1:58443/other" }), bad);
+  assert.deepEqual(await armZed({ redirectUri: "http://localhost:58443/" }), bad);
+  assert.equal(mock.rules.length, 0);
+});
+
+test("arming zed twice with different states leaves exactly one zed rule", async () => {
+  reset();
+  assert.deepEqual(await armZed({ state: "first" }), { ok: true });
+  const firstId = mock.rules[0].id;
+  assert.deepEqual(await armZed({ state: "second" }), { ok: true });
+  assert.equal(zedRules().length, 1);
+  assert.equal(mock.rules.length, 1);
+  assert.ok(mock.rules[0].action.redirect.regexSubstitution.endsWith("&state=second"));
+  assert.equal(mock.alarms.has(`oauth-bridge-rule-${firstId}`), false);
+  assert.equal(mock.alarms.size, 1);
+  const armed = mock.session.get("armed") as Record<string, unknown>;
+  assert.deepEqual(Object.keys(armed), [String(mock.rules[0].id)]);
+});
+
+test("a non-appended provider is unaffected by zed arming", async () => {
+  reset();
+  assert.deepEqual(await bg.handleArm(msg(), sender, { allowed: ZED_ALLOWED }), { ok: true });
+  assert.deepEqual(await armZed({ state: "z1" }), { ok: true });
+  assert.deepEqual(await armZed({ state: "z2" }), { ok: true });
+  assert.equal(mock.rules.length, 2);
+  const codexRule = mock.rules.find((r) => r.action.redirect.regexSubstitution.endsWith("\\1"));
+  assert.ok(codexRule);
+  assert.ok(new RegExp(codexRule.condition.regexFilter).test(`${CODEX}?code=c&state=st4te`));
+  const armed = mock.session.get("armed") as Record<string, Record<string, unknown>>;
+  assert.equal(armed[codexRule.id].stateMode, "query");
+});
+
+test("zed callback commit with the appended state disarms and closes the tab", async (t) => {
+  reset();
+  await armZed();
+  const id = mock.rules[0].id;
+  const closed = await committedClose(t, {
+    frameId: 0,
+    tabId: 9,
+    url: `${ORIGIN}/callback?user_id=1&access_token=abc&state=zst4te`,
+    transitionQualifiers: ["server_redirect"],
+  });
+  assert.deepEqual(closed, [9]);
+  assert.equal(mock.rules.length, 0);
+  assert.equal(mock.alarms.has(`oauth-bridge-rule-${id}`), false);
+  assert.deepEqual(mock.session.get("armed"), {});
+});
+
+test("beforeNavigate to the zed redirect with the required params marks the tab", async (t) => {
+  reset();
+  await armZed();
+  await bg.handleBeforeNavigate({ frameId: 0, tabId: 4, url: `${ZED_URI}?user_id=1` });
+  await bg.handleBeforeNavigate({
+    frameId: 0,
+    tabId: 9,
+    url: `${ZED_URI}?access_token=abc&user_id=1`,
+  });
+  const armed = mock.session.get("armed") as Record<string, Record<string, unknown>>;
+  assert.equal(Object.values(armed)[0].redirectedTabId, 9);
+  const closed = await committedClose(t, {
+    frameId: 0,
+    tabId: 9,
+    url: `${ORIGIN}/callback?access_token=abc&user_id=1&state=zst4te`,
+    transitionQualifiers: [],
+  });
+  assert.deepEqual(closed, [9]);
+});

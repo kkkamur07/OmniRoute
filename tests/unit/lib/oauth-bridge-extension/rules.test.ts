@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  appendedModeFor,
+  buildAppendedRegexFilter,
   buildRedirectRule,
   buildRegexFilter,
   escapeRegex,
@@ -226,4 +228,144 @@ test("isArmableRedirect: rejects the dashboard origin itself", () => {
     armable("http://localhost:20128/callback", "renderhour", "http://localhost:20128"),
     REJECTED
   );
+});
+
+const ZED_LIST = [
+  {
+    provider: "zed-hosted",
+    kind: "dashboard-port-loopback",
+    redirectUri: "http://127.0.0.1:{port}/",
+    stateMode: "appended",
+    requiredParams: ["user_id", "access_token"],
+  },
+  { provider: "codex", kind: "fixed-loopback", redirectUri: REDIRECT },
+];
+const ZED_URI = "http://127.0.0.1:58443/";
+const ZED_PARAMS = ["user_id", "access_token"];
+
+function zedRule(state = "s", redirectUri = ZED_URI) {
+  return buildRedirectRule({
+    id: 3,
+    redirectUri,
+    state,
+    dashboardOrigin: DASH,
+    requiredParams: ZED_PARAMS,
+  });
+}
+const zedMatch = (url: string) => url.match(new RegExp(zedRule().condition.regexFilter));
+function zedSubstitute(url: string, state = "s"): string | null {
+  const rule = zedRule(state);
+  const re = new RegExp(rule.condition.regexFilter);
+  if (!re.test(url)) return null;
+  // DNR uses \1 for group 1; JS replace uses $1.
+  return url.replace(re, rule.action.redirect.regexSubstitution.replace("\\1", "$1"));
+}
+
+test("appended: matches both param orders, extra params and a fragment", () => {
+  assert.ok(zedMatch(`${ZED_URI}?user_id=1&access_token=abc`));
+  assert.ok(zedMatch(`${ZED_URI}?access_token=abc&user_id=1`));
+  assert.ok(zedMatch(`${ZED_URI}?x=1&user_id=1&y=2&access_token=abc&z=3`));
+  assert.ok(zedMatch(`${ZED_URI}?access_token=abc&x=1&user_id=1#frag`));
+  assert.equal(
+    zedMatch(`${ZED_URI}?user_id=1&access_token=abc`)?.[1],
+    "user_id=1&access_token=abc"
+  );
+});
+
+test("appended: rejects missing params, look-alikes and other URIs", () => {
+  const cases = [
+    `${ZED_URI}?user_id=1`,
+    `${ZED_URI}?access_token=abc`,
+    `${ZED_URI}`,
+    `${ZED_URI}?user_idx=1&access_token=abc`,
+    `${ZED_URI}?xuser_id=1&access_token=abc`,
+    `${ZED_URI}?user_id=1&my_access_token=abc`,
+    `${ZED_URI}?user_id&access_token=abc`,
+    `${ZED_URI}#?user_id=1&access_token=abc`,
+    `${ZED_URI}?x=1#&user_id=1&access_token=abc`,
+    "http://127.0.0.1:58444/?user_id=1&access_token=abc",
+    "http://127.0.0.1:58443/other?user_id=1&access_token=abc",
+    "http://127.0.0.1:584430/?user_id=1&access_token=abc",
+    "http://127.0.0.1.evil.example:58443/?user_id=1&access_token=abc",
+    "http://evil.example/?u=http://127.0.0.1:58443/?user_id=1&access_token=abc",
+    "https://127.0.0.1:58443/?user_id=1&access_token=abc",
+    "http://127.0.0.10:58443/?user_id=1&access_token=abc",
+  ];
+  for (const c of cases) assert.equal(zedMatch(c), null, c);
+});
+
+test("appended: substitution appends the encoded state and drops the fragment", () => {
+  const state = "a b/c=d&e";
+  assert.equal(
+    zedSubstitute(`${ZED_URI}?user_id=1&access_token=abc#frag`, state),
+    `${DASH}/callback?user_id=1&access_token=abc&state=${encodeURIComponent(state)}`
+  );
+  assert.equal(
+    zedSubstitute(`${ZED_URI}?access_token=abc&user_id=1`),
+    `${DASH}/callback?access_token=abc&user_id=1&state=s`
+  );
+});
+
+test("appended: encoded state has no DNR substitution metacharacters", () => {
+  const nasty = "\\1\\0$1$&\\\\9%5C";
+  const rule = zedRule(nasty);
+  const sub = rule.action.redirect.regexSubstitution;
+  const tail = sub.slice(sub.indexOf("&state=") + "&state=".length);
+  assert.equal(tail, encodeURIComponent(nasty));
+  assert.ok(!tail.includes("\\"));
+  assert.equal(sub.match(/\\[0-9]/g)?.length, 1);
+});
+
+test("appended: rule shape and RE2 compatibility", () => {
+  const rule = zedRule();
+  assert.equal(rule.priority, 1);
+  assert.deepEqual(rule.condition.resourceTypes, ["main_frame"]);
+  assert.equal(rule.condition.isUrlFilterCaseSensitive, true);
+  const f = rule.condition.regexFilter;
+  for (const bad of ["(?=", "(?!", "(?<"]) assert.ok(!f.includes(bad));
+  assert.ok(!/\\[1-9]/.test(f));
+  // Exactly one capturing group: every other "(" is "(?:".
+  assert.equal((f.match(/\((?!\?)/g) ?? []).length, 1);
+});
+
+test("appended: buildAppendedRegexFilter refuses bad requiredParams", () => {
+  assert.equal(buildAppendedRegexFilter(ZED_URI, []), null);
+  assert.equal(buildAppendedRegexFilter(ZED_URI, ["a", "b", "c", "d"]), null);
+  assert.equal(buildAppendedRegexFilter(ZED_URI, ["a=b"]), null);
+  assert.equal(buildAppendedRegexFilter(ZED_URI, undefined as unknown as string[]), null);
+  assert.ok(buildAppendedRegexFilter(ZED_URI, ["a", "b", "c"]));
+  assert.equal(
+    buildRedirectRule({
+      id: 1,
+      redirectUri: ZED_URI,
+      state: "s",
+      dashboardOrigin: DASH,
+      requiredParams: [],
+    }),
+    null
+  );
+});
+
+test("appendedModeFor: only built-in appended entries count", () => {
+  assert.deepEqual(appendedModeFor("zed-hosted", ZED_LIST), { requiredParams: ZED_PARAMS });
+  assert.equal(appendedModeFor("codex", ZED_LIST), null);
+  assert.equal(appendedModeFor("codex"), null);
+  assert.equal(appendedModeFor("unknown", ZED_LIST), null);
+  // Arm-message-like data (no stateMode in the allow-list) never turns appended mode on.
+  const arm = { provider: "codex", state: "s", redirectUri: REDIRECT, stateMode: "appended" };
+  assert.equal(appendedModeFor(arm.provider, ZED_LIST), null);
+  assert.equal(appendedModeFor(arm as unknown as string, ZED_LIST), null);
+  const tooMany = [{ ...ZED_LIST[0], requiredParams: ["a", "b", "c", "d"] }];
+  assert.equal(appendedModeFor("zed-hosted", tooMany), null);
+  assert.equal(appendedModeFor("zed-hosted", [{ ...ZED_LIST[0], requiredParams: [] }]), null);
+  assert.equal(appendedModeFor("zed-hosted", [{ ...ZED_LIST[0], stateMode: "query" }]), null);
+});
+
+test("isArmableRedirect: appended providers need an exact allow-list match", () => {
+  const arm = (uri: string) => isArmableRedirect(uri, "zed-hosted", ZED_LIST);
+  assert.deepEqual(arm(ZED_URI), { ok: true });
+  assert.deepEqual(arm("http://127.0.0.1:1/"), { ok: true });
+  assert.deepEqual(arm("http://127.0.0.1:58443/other"), REJECTED);
+  assert.deepEqual(arm("http://localhost:58443/"), REJECTED);
+  assert.deepEqual(arm("http://127.0.0.1/"), REJECTED);
 });

@@ -14,12 +14,20 @@ const scratchDataDir = mkdtempSync(join(tmpdir(), "omniroute-oauth-categories-")
 process.env.DATA_DIR = scratchDataDir;
 process.on("exit", () => rmSync(scratchDataDir, { recursive: true, force: true }));
 
-// Keep import-time DB logs off stdout so the table is the only output there.
-const originalLog = console.log;
-console.log = (...args) => console.error(...args);
-const { OAUTH_ONBOARDING_CATEGORIES, classifyAllOAuthProviders, listOAuthProviderIds } =
-  await import("../../src/lib/oauth/onboardingCategories.ts");
-console.log = originalLog;
+// Importing the provider index opens and migrates the scratch DB, which prints a few hundred
+// "[DB]" / "[Migration]" lines through plain console.log/info/debug/warn (src/lib/db/core.ts,
+// src/lib/db/migrationRunner.ts; no log-level switch gates them). Mute those methods for the
+// import only; console.error stays live so a real failure is still visible.
+const MUTED = ["log", "info", "debug", "warn"];
+const originals = MUTED.map((method) => [method, console[method]]);
+for (const method of MUTED) console[method] = () => {};
+let imported;
+try {
+  imported = await import("../../src/lib/oauth/onboardingCategories.ts");
+} finally {
+  for (const [method, fn] of originals) console[method] = fn;
+}
+const { OAUTH_ONBOARDING_CATEGORIES, classifyAllOAuthProviders, listOAuthProviderIds } = imported;
 
 const rows = classifyAllOAuthProviders();
 const unclassified = listOAuthProviderIds().filter((id) => !rows.some((r) => r.provider === id));
@@ -31,10 +39,16 @@ const widths = {
   redirect: Math.max(8, ...rows.map((r) => (r.redirectUri ?? "-").length)),
 };
 
-for (const category of OAUTH_ONBOARDING_CATEGORIES) {
+// `| head` closes stdout early; exit quietly instead of crashing on EPIPE.
+process.stdout.on("error", (err) => {
+  if (err?.code === "EPIPE") process.exit(0);
+  throw err;
+});
+
+OAUTH_ONBOARDING_CATEGORIES.forEach((category, index) => {
   const group = rows.filter((r) => r.category === category);
-  console.log(`\n## ${category} (${group.length})`);
-  if (group.length === 0) continue;
+  console.log(`${index === 0 ? "" : "\n"}## ${category} (${group.length})`);
+  if (group.length === 0) return;
   console.log(
     `${pad("provider", widths.provider)}  ${pad("flowType", widths.flowType)}  ` +
       `${pad("redirect", widths.redirect)}  reason`
@@ -45,7 +59,7 @@ for (const category of OAUTH_ONBOARDING_CATEGORIES) {
         `${pad(r.redirectUri ?? "-", widths.redirect)}  ${r.reason}`
     );
   }
-}
+});
 
 console.log("\nCounts:");
 for (const category of OAUTH_ONBOARDING_CATEGORIES) {

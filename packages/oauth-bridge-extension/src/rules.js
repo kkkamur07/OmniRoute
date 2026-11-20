@@ -94,6 +94,28 @@ function isProviderCodePageRedirect(raw, url, allowed) {
   return onCodePageOrigin && isBareUrl(raw, url);
 }
 
+const MAX_REQUIRED_PARAMS = 3;
+// Unreserved URL characters only, so a param name never needs percent-encoding.
+const PARAM_NAME_RE = /^[A-Za-z0-9._~-]{1,64}$/;
+
+/**
+ * Appended state mode for `provider`, read only from the built-in allow-list: returns
+ * `{requiredParams}` when an entry for the provider has `stateMode: "appended"` and 1-3 valid,
+ * distinct `requiredParams`; otherwise null (the default "query" mode, state carried as `state=`).
+ */
+export function appendedModeFor(provider, allowed = ALLOWED_REDIRECTS) {
+  if (typeof provider !== "string" || !Array.isArray(allowed)) return null;
+  const entry = allowed.find((e) => e && e.provider === provider && e.stateMode === "appended");
+  if (!entry) return null;
+  const params = entry.requiredParams;
+  if (!Array.isArray(params) || params.length === 0 || params.length > MAX_REQUIRED_PARAMS) {
+    return null;
+  }
+  if (!params.every((p) => typeof p === "string" && PARAM_NAME_RE.test(p))) return null;
+  if (new Set(params).size !== params.length) return null;
+  return { requiredParams: [...params] };
+}
+
 /**
  * Decides whether `redirectUri` may be armed for `provider`. Accepts an exact allow-list
  * match, a bare http loopback URI (127.0.0.1 or localhost, any port and path), or a bare https
@@ -121,6 +143,8 @@ export function isArmableRedirect(
   if (!literalMatchesParsed(redirectUri, url)) return reject;
 
   if (matchAllowedRedirect(redirectUri, provider, allowed)) return { ok: true };
+  // Appended-mode providers carry no state of their own: only the exact allow-listed URI.
+  if (appendedModeFor(provider, allowed)) return reject;
   if (isLoopbackRedirect(redirectUri, url)) return { ok: true };
   if (isProviderCodePageRedirect(redirectUri, url, allowed)) return { ok: true };
   return reject;
@@ -140,17 +164,56 @@ export function buildRegexFilter(redirectUri, state) {
   );
 }
 
-/** A declarativeNetRequest session rule redirecting the matched tab to the dashboard. */
-export function buildRedirectRule({ id, redirectUri, state, dashboardOrigin }) {
+function permutations(items) {
+  if (items.length <= 1) return [items];
+  return items.flatMap((item, i) =>
+    permutations([...items.slice(0, i), ...items.slice(i + 1)]).map((rest) => [item, ...rest])
+  );
+}
+
+/**
+ * The regexFilter for an appended-mode sign-in: exact redirect URI, then a query in which every
+ * name in `requiredParams` is a whole parameter (`name=value`, preceded by the query start or
+ * `&`), in any order, with any other params around them. Group 1 captures the full query; every
+ * inner group is non-capturing. RE2-compatible: the "any order" is an alternation over the
+ * permutations (at most 3! = 6), no lookaround/backrefs. Returns null for an invalid list.
+ */
+export function buildAppendedRegexFilter(redirectUri, requiredParams) {
+  if (!Array.isArray(requiredParams) || requiredParams.length === 0) return null;
+  if (requiredParams.length > MAX_REQUIRED_PARAMS) return null;
+  if (!requiredParams.every((p) => typeof p === "string" && PARAM_NAME_RE.test(p))) return null;
+  const alternatives = permutations(requiredParams).map(
+    (order) =>
+      order.map((name) => `(?:[^#]*&)?${escapeRegex(name)}=[^&#]*`).join("&") + "(?:&[^#]*)?"
+  );
+  return `^${escapeRegex(redirectUri)}\\?((?:${alternatives.join("|")}))(?:#.*)?$`;
+}
+
+/**
+ * A declarativeNetRequest session rule redirecting the matched tab to the dashboard. With
+ * `requiredParams` (appended mode) the rule matches buildAppendedRegexFilter and the
+ * substitution appends `&state=<encoded state>`; encodeURIComponent never emits `\`, so the
+ * state cannot be read as a `\N` capture reference. Returns null if the appended filter
+ * cannot be built.
+ */
+export function buildRedirectRule({ id, redirectUri, state, dashboardOrigin, requiredParams }) {
+  const appended = requiredParams !== undefined;
+  const regexFilter = appended
+    ? buildAppendedRegexFilter(redirectUri, requiredParams)
+    : buildRegexFilter(redirectUri, state);
+  if (!regexFilter) return null;
+  const regexSubstitution = appended
+    ? `${dashboardOrigin}/callback?\\1&state=${encodeURIComponent(state)}`
+    : `${dashboardOrigin}/callback?\\1`;
   return {
     id,
     priority: 1,
     action: {
       type: "redirect",
-      redirect: { regexSubstitution: `${dashboardOrigin}/callback?\\1` },
+      redirect: { regexSubstitution },
     },
     condition: {
-      regexFilter: buildRegexFilter(redirectUri, state),
+      regexFilter,
       // OAuth state values are case-sensitive; DNR defaults to case-insensitive.
       isUrlFilterCaseSensitive: true,
       resourceTypes: ["main_frame"],

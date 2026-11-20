@@ -124,7 +124,7 @@ test("named providers land in the expected category", () => {
     claude: "bridge-provider-code-page",
     github: "device-code",
     cursor: "import-token",
-    "zed-hosted": "manual-only",
+    "zed-hosted": "bridge-dashboard-port-loopback",
     qoder: "dashboard-origin-callback",
     chatgpt: "bridge-fixed-loopback",
     "copilot-m365-web": "bridge-provider-code-page",
