@@ -60,10 +60,8 @@ test("renderhour: any dashboard port is accepted, the provider id is enforced", 
   assert.equal(matchAllowedRedirect(uri, "devin-desktop"), false);
 });
 
-const UNSUPPORTED = [
-  { provider: "zed-hosted", reason: /no OAuth state/ },
-  { provider: "devin-cli", reason: /Import-token only/ },
-] as const;
+// zed-hosted moved to appended state mode (bridge-supported); see oauth-bridge-zed.test.ts.
+const UNSUPPORTED = [{ provider: "devin-cli", reason: /Import-token only/ }] as const;
 
 for (const p of UNSUPPORTED) {
   test(`${p.provider}: registry marks it unsupported with a reason`, () => {

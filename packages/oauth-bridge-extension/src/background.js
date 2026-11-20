@@ -6,7 +6,16 @@
  * isArmableRedirect in rules.js: an exact allow-list match, a bare http loopback URI on
  * 127.0.0.1 or localhost, or a bare https URI on an allow-listed provider code page origin,
  * never the dashboard origin itself, carrying `state=<armed state>`) to `<dashboard-origin>/callback`,
- * keeping the original query. When the tab commits that /callback URL the rule is removed and,
+ * keeping the original query.
+ *
+ * Appended state mode: for a provider whose built-in allow-list entry has
+ * `stateMode: "appended"` (appendedModeFor in rules.js; Zed, whose redirect carries no state),
+ * the redirect URI must be an exact allow-list match and the rule instead matches
+ * `<redirectUri>?<query with every requiredParam>`, substituting
+ * `<dashboard-origin>/callback?state=<armed state>&<query>` (state first, so it wins). Because such a rule cannot tell two
+ * attempts apart, arming one replaces every other appended-mode rule for the same provider.
+ *
+ * When the tab commits that /callback URL the rule is removed and,
  * if the navigation came from our redirect, the tab is closed a few seconds later.
  *
  * Storage keys:
@@ -16,13 +25,15 @@
  *                                             because the service worker is restarted often.
  * Alarms: "oauth-bridge-rule-<ruleId>", one per armed rule, fired after RULE_TTL_MINUTES.
  *
- * ArmedEntry: {ruleId, state, redirectUri, dashboardOrigin, tabId, expiresAt, redirectedTabId?}
+ * ArmedEntry: {ruleId, provider, state, redirectUri, dashboardOrigin, tabId, expiresAt,
+ *              stateMode: "query" | "appended", requiredParams?, redirectedTabId?}
  *
- * Code and state values are secrets: never log them.
+ * Code, state and token values are secrets: never log them.
  */
 
 import { MSG_ARM, REASONS, RULE_TTL_MINUTES, isValidOrigin, parseArmMessage } from "./protocol.js";
-import { buildRedirectRule, isArmableRedirect } from "./rules.js";
+import { ALLOWED_REDIRECTS } from "./allowedRedirects.generated.js";
+import { appendedModeFor, buildRedirectRule, isArmableRedirect } from "./rules.js";
 
 const APPROVED_ORIGINS_KEY = "approvedOrigins";
 const ARMED_KEY = "armed";
@@ -89,11 +100,13 @@ async function disarm(ruleId) {
  * Handles an arm request from content.js. The dashboard origin is taken only from
  * `sender.origin` and must be in "approvedOrigins"; the payload is validated with
  * parseArmMessage and the redirect URI must pass isArmableRedirect. On success one
- * session redirect rule is added (replacing any rule already armed for the same state), its
- * metadata is stored under "armed" and a TTL alarm is created.
+ * session redirect rule is added (replacing any rule already armed for the same state and, in
+ * appended mode, every appended-mode rule armed for the same provider), its metadata is stored
+ * under "armed" and a TTL alarm is created. `options.allowed` overrides the built-in allow-list
+ * (tests only; the message listener never passes it).
  * @returns {Promise<{ok: true} | {ok: false, reason: string}>}
  */
-export async function handleArm(message, sender) {
+export async function handleArm(message, sender, { allowed = ALLOWED_REDIRECTS } = {}) {
   try {
     const dashboardOrigin = sender?.origin;
     if (!isValidOrigin(dashboardOrigin)) return fail(REASONS.unapprovedOrigin);
@@ -103,8 +116,9 @@ export async function handleArm(message, sender) {
     const parsed = parseArmMessage(message);
     if (!parsed.ok) return fail(parsed.reason);
     const { provider, state, redirectUri } = parsed.value;
-    const redirectCheck = isArmableRedirect(redirectUri, provider, undefined, { dashboardOrigin });
+    const redirectCheck = isArmableRedirect(redirectUri, provider, allowed, { dashboardOrigin });
     if (!redirectCheck.ok) return fail(redirectCheck.reason);
+    const appended = appendedModeFor(provider, allowed);
 
     return await serialized(async () => {
       const dnr = api().declarativeNetRequest;
@@ -115,10 +129,22 @@ export async function handleArm(message, sender) {
       const ruleId = Math.max(maxArmedId, maxRuleId) + 1;
 
       const replacedIds = Object.values(armed)
-        .filter((entry) => entry && entry.state === state)
+        .filter(
+          (entry) =>
+            entry &&
+            (entry.state === state ||
+              (appended && entry.stateMode === "appended" && entry.provider === provider))
+        )
         .map((entry) => Number(entry.ruleId));
 
-      const rule = buildRedirectRule({ id: ruleId, redirectUri, state, dashboardOrigin });
+      const rule = buildRedirectRule({
+        id: ruleId,
+        redirectUri,
+        state,
+        dashboardOrigin,
+        ...(appended ? { requiredParams: appended.requiredParams } : {}),
+      });
+      if (!rule) return fail(REASONS.redirectNotAllowed);
       await dnr.updateSessionRules({ addRules: [rule], removeRuleIds: replacedIds });
 
       for (const oldId of replacedIds) {
@@ -127,11 +153,14 @@ export async function handleArm(message, sender) {
       }
       armed[ruleId] = {
         ruleId,
+        provider,
         state,
         redirectUri,
         dashboardOrigin,
         tabId: sender.tab?.id,
         expiresAt: Date.now() + RULE_TTL_MINUTES * 60 * 1000,
+        stateMode: appended ? "appended" : "query",
+        ...(appended ? { requiredParams: appended.requiredParams } : {}),
       };
       await writeArmed(armed);
       await api().alarms.create(alarmName(ruleId), { delayInMinutes: RULE_TTL_MINUTES });
@@ -142,29 +171,39 @@ export async function handleArm(message, sender) {
   }
 }
 
-function stateParam(url) {
+function searchParamsOf(url) {
   try {
-    return new URL(url).searchParams.get("state");
+    return new URL(url).searchParams;
   } catch {
     return null;
   }
 }
 
+/** True when `details.url` is the armed redirect for `entry` (state or required params). */
+function isArmedRedirectNavigation(entry, url, params) {
+  if (!entry || !url.startsWith(`${entry.redirectUri}?`) || !params) return false;
+  if (entry.stateMode === "appended") {
+    const required = Array.isArray(entry.requiredParams) ? entry.requiredParams : [];
+    return required.length > 0 && required.every((name) => params.has(name));
+  }
+  return params.get("state") === entry.state;
+}
+
 /**
  * webNavigation.onBeforeNavigate (top frame only). When a tab starts navigating to an armed
- * redirect URI (`<redirectUri>?...` with the armed state, e.g. a provider code page doing a
- * client-side navigation), records that tab as `redirectedTabId` on the armed entry.
+ * redirect URI (`<redirectUri>?...` with the armed state, or in appended mode with every
+ * required param, e.g. a provider code page doing a client-side navigation), records that tab
+ * as `redirectedTabId` on the armed entry.
  */
 export async function handleBeforeNavigate(details) {
   if (!details || details.frameId !== 0 || typeof details.url !== "string") return;
   try {
     await serialized(async () => {
       const armed = await readArmed();
-      const state = stateParam(details.url);
+      const params = searchParamsOf(details.url);
       let changed = false;
       for (const entry of Object.values(armed)) {
-        if (!entry || !details.url.startsWith(`${entry.redirectUri}?`)) continue;
-        if (state !== entry.state) continue;
+        if (!isArmedRedirectNavigation(entry, details.url, params)) continue;
         entry.redirectedTabId = details.tabId;
         changed = true;
       }

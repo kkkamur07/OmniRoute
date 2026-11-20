@@ -29,6 +29,15 @@ export interface ExternalRedirectEntry {
   bridge: "supported" | "unsupported";
   /** major = codex, openai, claude, xai-oauth, grok-cli. */
   phase: "major" | "later";
+  /**
+   * How the armed state reaches the dashboard. Default "query": the provider echoes
+   * `state=` in its redirect. "appended": the provider sends no state, so the extension
+   * puts the armed state first in the relayed query. Honoured by the extension only from its
+   * built-in list.
+   */
+  stateMode?: "query" | "appended";
+  /** Params the redirect must carry in "appended" mode (the rule matches on them). */
+  requiredParams?: readonly string[];
   notes?: string;
 }
 
@@ -159,13 +168,17 @@ export const EXTERNAL_REDIRECTS: readonly ExternalRedirectEntry[] = [
     kind: "dashboard-port-loopback",
     redirectUri: "http://127.0.0.1:{port}/",
     hostPermission: "http://127.0.0.1/*",
-    bridge: "unsupported",
+    bridge: "supported",
     phase: "later",
+    stateMode: "appended",
+    requiredParams: ["user_id", "access_token"],
     notes:
       "Zed native_app_signin sends no OAuth state (zedAuth.ts createZedNativeAuthData) and " +
       "redirects to http://127.0.0.1:<native_app_port>/?user_id&access_token (an " +
-      "RSA-encrypted token, not code/state). The bridge rule is state-keyed, so remote " +
-      "sign-in uses manual URL paste.",
+      "RSA-encrypted token, not code/state). Appended mode: the extension matches on " +
+      "user_id + access_token and puts the armed state first in the relayed /callback query; " +
+      "OAuthModal still requires that state to match the attempt. Without the extension, " +
+      "remote sign-in uses manual URL paste.",
   },
 ];
 

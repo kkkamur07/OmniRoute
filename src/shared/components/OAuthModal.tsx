@@ -559,9 +559,9 @@ function LegacyOAuthModal({
         // zed-hosted's native-app sign-in redirects the browser to a local
         // 127.0.0.1:<native_app_port> callback. On true localhost that port IS the
         // dashboard's own (buildAuthUrl reuses it), so the redirect lands on the
-        // /callback relay and the popup flow auto-completes. Elsewhere (LAN/remote)
-        // the port is unreachable — nothing can auto-close the popup, so always
-        // show the manual paste-URL input.
+        // /callback relay and the popup flow auto-completes. Elsewhere (LAN/remote) an armed
+        // bridge (appended state) relays it and returns before this flag is read; without
+        // it nothing can auto-close the popup, so the manual paste-URL input is shown.
         if (
           provider === "claude" ||
           provider === "cline" ||

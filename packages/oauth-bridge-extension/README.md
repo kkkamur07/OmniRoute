@@ -45,6 +45,7 @@ Use Remove in the popup to revoke a dashboard at any time.
 | `chatgpt`          | fixed-loopback          | `http://127.0.0.1:1455/auth/callback`                          | later |
 | `copilot-m365-web` | provider-code-page      | `https://login.microsoftonline.com/common/oauth2/nativeclient` | later |
 | `renderhour`       | dashboard-port-loopback | `http://localhost:{port}/callback`                             | later |
+| `zed-hosted`       | dashboard-port-loopback | `http://127.0.0.1:{port}/`                                     | later |
 
 `{port}` is the dashboard's own port.
 
@@ -53,7 +54,6 @@ Unsupported:
 - `devin-cli`: Import-token only: the browser authorize flow is retired (authorize returns 410) and OAuthModal never starts it, so there is no redirect for the extension to catch.
 - `antigravity`: Google firstparty/nativeapp consent hangs without a live loopback listener, so there is no redirect to catch (see googleLoopbackHint.ts).
 - `agy`: Same Google native-app consent as antigravity; hangs without a loopback listener.
-- `zed-hosted`: Zed native_app_signin sends no OAuth state (zedAuth.ts createZedNativeAuthData) and redirects to http://127.0.0.1:<native_app_port>/?user_id&access_token (an RSA-encrypted token, not code/state). The bridge rule is state-keyed, so remote sign-in uses manual URL paste.
 
 <!-- oauth-bridge:providers:end -->
 
