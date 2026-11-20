@@ -31,6 +31,8 @@ import { getPasteTokenCopyKeys } from "@/shared/components/oauthModal/pasteToken
 import { parseGrokCliPasteToken } from "@/lib/oauth/utils/grokCliAuthJson";
 import { buildGoogleLoopbackHint } from "@/lib/oauth/utils/googleLoopbackHint";
 import { errorMessageFromBody } from "@/shared/utils/fetchError";
+import { DEFAULT_DISPLAY_BASE_URL } from "@/shared/hooks/useDisplayBaseUrl";
+import { resolveExternalRedirectUri } from "@/lib/oauth/externalRedirects";
 import {
   buildPkceLoopbackMismatchHint,
   type PkceLoopbackMismatchHint,
@@ -41,11 +43,22 @@ export { formatDeviceCodeRemaining } from "./OAuthModalPanels";
 const GOOGLE_OAUTH_PROVIDERS = new Set(["antigravity", "agy"]);
 
 /**
- * Providers whose OAuth server accepts only loopback redirects (any port, RFC 8252 §7.3).
- * On a remote install the browser lands on the operator's own loopback and the callback URL
- * is pasted back, as for the Google providers.
+ * Providers whose redirect_uri is pinned by the external-redirect registry: fixed loopbacks
+ * (codex/openai, xai-oauth, grok-cli, devin-desktop) and dashboard-port loopbacks (devin-cli,
+ * Google antigravity/agy, loopback-only renderhour per RFC 8252 §7.3). Off-host the browser
+ * lands on the operator's own loopback and the callback URL is pasted back.
  */
-const LOOPBACK_REDIRECT_PROVIDERS = new Set(["renderhour"]);
+const REGISTRY_REDIRECT_PROVIDERS = new Set([
+  "codex",
+  "openai",
+  "xai-oauth",
+  "grok-cli",
+  "devin-desktop",
+  "devin-cli",
+  "antigravity",
+  "agy",
+  "renderhour",
+]);
 
 /** Providers that use a local callback server on a random port (PKCE browser flow). */
 const PKCE_CALLBACK_SERVER_PROVIDERS = new Set(["codex", "xai-oauth", "grok-cli", "devin-desktop"]);
@@ -609,46 +622,25 @@ function LegacyOAuthModal({
 
         // Authorization code flow
         // Redirect URI strategy:
-        // - Codex/OpenAI: always port 1455 (registered in OAuth app)
-        // - Devin Desktop/CLI retain the legacy localhost callback path as a fallback
-        // - Google OAuth providers (antigravity/agy): default to loopback so the
-        //   bundled native/desktop credentials keep working. Prefer 127.0.0.1 over
-        //   localhost for the Google native-app handoff; Google documents that localhost
-        //   can run into local firewall/name-resolution edge cases. The authorize route
-        //   upgrades this to the public callback when custom Google web credentials plus
-        //   NEXT_PUBLIC_BASE_URL or OMNIROUTE_PUBLIC_BASE_URL are configured.
+        // - Registry providers: the exact URI from src/lib/oauth/externalRedirects.ts (codex/
+        //   openai port 1455, Grok Build ports, Devin, Google 127.0.0.1 on the dashboard port;
+        //   the authorize route upgrades Google to the public callback when custom web
+        //   credentials plus NEXT_PUBLIC_BASE_URL or OMNIROUTE_PUBLIC_BASE_URL are configured).
         // - Other providers on remote: use actual origin (supports PUBLIC_URL env var)
         // - Localhost: use localhost:port
         let redirectUri: string;
-        if (provider === "codex" || provider === "openai") {
-          redirectUri = "http://localhost:1455/auth/callback";
-        } else if (provider === "xai-oauth" || provider === "grok-cli") {
-          // Fixed native-app loopback callback, distinct ports so both can run concurrently (#7013).
-          const grokBuildPort = provider === "xai-oauth" ? 56121 : 56122;
-          redirectUri = `http://127.0.0.1:${grokBuildPort}/callback`;
-        } else if (provider === "devin-desktop") {
-          // Fixed loopback registered by the Devin CLI login (paste-URL fallback off-host).
-          redirectUri = "http://127.0.0.1:59653/callback";
-        } else if (provider === "devin-cli") {
-          // Retained callback-path fallback for the retired browser flow.
-          const port = window.location.port || "20128";
-          redirectUri = `http://localhost:${port}/auth/callback`;
-        } else if (GOOGLE_OAUTH_PROVIDERS.has(provider)) {
-          // Google OAuth built-in credentials only accept loopback redirect URIs.
-          // Even in remote deployments we use loopback — user copies the callback URL manually.
-          const port = window.location.port || "20128";
-          redirectUri = `http://127.0.0.1:${port}/callback`;
-        } else if (LOOPBACK_REDIRECT_PROVIDERS.has(provider)) {
-          // Same origin as the dashboard on localhost, so the /callback relay reaches it.
-          const host = isTrueLocalhost ? window.location.hostname : "localhost";
-          const port = window.location.port || "20128";
-          redirectUri = `http://${host}:${port}/callback`;
+        if (REGISTRY_REDIRECT_PROVIDERS.has(provider)) {
+          redirectUri = resolveExternalRedirectUri(provider, window.location.port || "20128");
+          // renderhour relays via the dashboard origin, so keep the browser's own loopback host.
+          if (provider === "renderhour" && isTrueLocalhost) {
+            redirectUri = redirectUri.replace("//localhost:", `//${window.location.hostname}:`);
+          }
         } else if (!isLocalhost) {
           // Behind reverse proxy: use actual origin (e.g., https://omniroute.example.com/callback)
           // Supports PUBLIC_URL env var override, or falls back to window.location.origin.
           const publicUrl = process.env.NEXT_PUBLIC_BASE_URL;
           const origin =
-            publicUrl && publicUrl !== "http://localhost:20128"
+            publicUrl && publicUrl !== DEFAULT_DISPLAY_BASE_URL
               ? publicUrl.replace(/\/$/, "")
               : window.location.origin;
           redirectUri = `${origin}/callback`;
