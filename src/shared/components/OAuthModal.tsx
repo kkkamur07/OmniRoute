@@ -32,8 +32,10 @@ import OAuthBridgeWaitingStep, {
 } from "@/shared/components/oauthModal/OAuthBridgeWaiting";
 import {
   BRIDGE_DOCS_URL,
+  bridgeArmRequestFrom,
   shouldShowBridgeHint,
   shouldUseBridge,
+  shouldUseBridgeForAttempt,
   useOAuthBridge,
 } from "@/shared/components/oauthModal/useOAuthBridge";
 import { getPasteTokenCopyKeys } from "@/shared/components/oauthModal/pasteTokenCopy";
@@ -542,6 +544,8 @@ function LegacyOAuthModal({
         }
 
         let forceManual = false;
+        // True once this attempt's own local callback server started: it owns the redirect.
+        let localServerStarted = false;
 
         // Claude Code and Cline OAuth flows can finish on provider-hosted pages that
         // show an auth code instead of redirecting back to OmniRoute.
@@ -573,6 +577,7 @@ function LegacyOAuthModal({
                 throw new Error(
                   getErrorMessage(serverData, serverRes.status, t("errorCallbackServerFailed"))
                 );
+              localServerStarted = true;
 
               if (typeof serverData.authUrl !== "string" || !serverData.authUrl) {
                 throw new Error(errorMessageFromBody(serverData, t("errorBrowserUnavailable")));
@@ -678,15 +683,17 @@ function LegacyOAuthModal({
 
         setAuthData({ ...data, redirectUri: data.redirectUri || redirectUri });
         // Bridge: the armed extension sends the redirect for this state to our /callback.
+        // Arms the server-returned redirectUri (the one inside authUrl), never the requested one.
+        const armRequest = bridgeArmRequestFrom(provider, data);
         const armed =
-          useBridge &&
-          typeof data.state === "string" &&
-          !!data.state &&
-          (await arm({
+          shouldUseBridgeForAttempt({
             provider,
-            state: data.state,
-            redirectUri: String(data.redirectUri || redirectUri),
-          }));
+            isTrueLocalhost,
+            bridgeVersion,
+            localCallbackServerStarted: localServerStarted,
+          }) &&
+          !!armRequest &&
+          (await arm(armRequest));
         setBridgeArmed(armed);
         if (armed) {
           popupRef.current = null; // the extension closes the tab; no popup-closed fallback

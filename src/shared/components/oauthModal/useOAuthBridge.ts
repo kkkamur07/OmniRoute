@@ -97,6 +97,36 @@ export function shouldUseBridge(opts: {
   return !opts.isTrueLocalhost && !!opts.bridgeVersion && isBridgeSupportedProvider(opts.provider);
 }
 
+/**
+ * OAuthModal's per-attempt gate. Off true localhost it is shouldUseBridge. On true localhost the
+ * bridge is used too (extension present, supported provider) unless this attempt successfully
+ * started OmniRoute's own local callback server, which then owns the redirect alone.
+ */
+export function shouldUseBridgeForAttempt(opts: {
+  provider: string | undefined;
+  isTrueLocalhost: boolean;
+  bridgeVersion: string | null | undefined;
+  localCallbackServerStarted: boolean;
+}): boolean {
+  if (!opts.bridgeVersion || !isBridgeSupportedProvider(opts.provider)) return false;
+  return !opts.isTrueLocalhost || !opts.localCallbackServerStarted;
+}
+
+/**
+ * The arm request for an /authorize response: its own state and redirectUri, never a
+ * client-computed fallback. Null when either is missing (the attempt then skips the bridge).
+ */
+export function bridgeArmRequestFrom(
+  provider: string,
+  data: Record<string, unknown> | null | undefined
+): BridgeArmRequest | null {
+  const state = data?.state;
+  const redirectUri = data?.redirectUri;
+  if (typeof state !== "string" || !state) return null;
+  if (typeof redirectUri !== "string" || !redirectUri) return null;
+  return { provider, state, redirectUri };
+}
+
 /** Show the one-line install hint: supported provider, remote location, no extension. */
 export function shouldShowBridgeHint(opts: {
   provider: string | undefined;

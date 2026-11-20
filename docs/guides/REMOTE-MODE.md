@@ -279,7 +279,22 @@ listener; use the options in
 
 **Fallback:** without the extension (or if arming fails within about 1.5 s) the dialog keeps
 the existing paste flow. While waiting, "Paste the URL manually instead" switches to it. On
-true localhost the extension is not used.
+true localhost the ChatGPT web and Microsoft 365 dialogs do not use the extension.
+
+### Works with any OmniRoute
+
+- The helper behaves the same on a hosted domain (https on port 443), a LAN IP or Tailscale
+  address, behind a reverse proxy, on a custom port, and on a local install where the
+  provider's loopback port is not reachable (for example Docker on localhost without port
+  1455 published).
+- The dashboard sends the helper the exact redirect URI the server's `/authorize` step
+  returned. It never guesses one from the browser address.
+- On true localhost, the standard sign-in dialog uses OmniRoute's own local callback server
+  when it starts for that attempt (codex, xai-oauth, grok-cli, devin-desktop); otherwise it
+  uses the helper if installed. The install hint is only shown on remote dashboards.
+- To see how every OAuth provider signs in (helper, dashboard callback, device code, token
+  import, or manual paste), run `npm run oauth:categories`. The source is
+  `src/lib/oauth/onboardingCategories.ts`.
 
 ## Managing tokens
 
