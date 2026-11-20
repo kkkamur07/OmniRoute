@@ -1,10 +1,21 @@
 /**
- * Wire protocol between the OmniRoute dashboard page and this extension
- * (window.postMessage, targetOrigin = location.origin, both directions).
+ * Wire protocol between the OmniRoute dashboard page and this extension.
  *
- *   extension -> page: {source: SOURCE_EXTENSION, type: MSG_READY, version}
- *   page -> extension: {source: SOURCE_DASHBOARD, type: MSG_ARM, requestId, provider, state, redirectUri}
- *   extension -> page: {source: SOURCE_EXTENSION, type: MSG_ARMED | MSG_ERROR, requestId, reason?}
+ * The dashboard embeds `chrome-extension://<id>/bridge.html` as a hidden iframe and talks to it
+ * with window.postMessage only. The bridge frame posts to the dashboard origin (from
+ * location.ancestorOrigins / event.origin, never from message data); the dashboard posts to the
+ * extension origin.
+ *
+ *   bridge -> page: {source: SOURCE_EXTENSION, type: MSG_READY, version, approved}
+ *   bridge -> page: {source: SOURCE_EXTENSION, type: MSG_APPROVED, version}
+ *   page -> bridge: {source: SOURCE_DASHBOARD, type: MSG_ARM, requestId, provider, state, redirectUri}
+ *   page -> bridge: {source: SOURCE_DASHBOARD, type: MSG_BRIDGE_STATUS} (asks for a fresh ready)
+ *   bridge -> page: {source: SOURCE_EXTENSION, type: MSG_ARMED | MSG_ERROR, requestId, reason?}
+ *
+ * Inside the extension (chrome.runtime.sendMessage):
+ *   bridge -> worker:  {type: MSG_ARM | MSG_BRIDGE_STATUS, origin, ...payload}
+ *   approve -> worker: {type: MSG_APPROVE_ORIGIN, origin, isFramed}
+ *   worker -> bridges: {type: MSG_ORIGIN_APPROVED, origin}
  *
  * Pure module: no chrome.* or DOM access, so Node tests can import it.
  */
@@ -16,8 +27,13 @@ export const MSG_READY = "ready";
 export const MSG_ARM = "oauth-bridge:arm";
 export const MSG_ARMED = "oauth-bridge:armed";
 export const MSG_ERROR = "oauth-bridge:error";
-/** Approve page -> service worker (chrome.runtime.sendMessage, extension pages only). */
+export const MSG_APPROVED = "approved";
+/** Page -> bridge and bridge -> service worker: is this dashboard origin approved? */
+export const MSG_BRIDGE_STATUS = "oauth-bridge:status";
+/** Approve page -> service worker (chrome.runtime.sendMessage, approve.html only). */
 export const MSG_APPROVE_ORIGIN = "approve-origin";
+/** Service worker -> bridge frames after an origin was approved. */
+export const MSG_ORIGIN_APPROVED = "origin-approved";
 
 /** How long an armed rule lives before it is removed, in minutes. */
 export const RULE_TTL_MINUTES = 10;
@@ -104,15 +120,29 @@ export function parseArmMessage(data) {
   return { ok: true, value: { requestId, provider, state, redirectUri } };
 }
 
-/** True for a window message the content script should forward. */
+/** True for a window message the bridge frame should forward as an arm request. */
 export function isDashboardArmMessage(data) {
   return (
     !!data && typeof data === "object" && data.source === SOURCE_DASHBOARD && data.type === MSG_ARM
   );
 }
 
-export function readyMessage(version) {
-  return { source: SOURCE_EXTENSION, type: MSG_READY, version };
+/** True for a window message asking the bridge frame for a fresh `ready`. */
+export function isDashboardStatusMessage(data) {
+  return (
+    !!data &&
+    typeof data === "object" &&
+    data.source === SOURCE_DASHBOARD &&
+    data.type === MSG_BRIDGE_STATUS
+  );
+}
+
+export function readyMessage(version, approved = false) {
+  return { source: SOURCE_EXTENSION, type: MSG_READY, version, approved: approved === true };
+}
+
+export function approvedMessage(version) {
+  return { source: SOURCE_EXTENSION, type: MSG_APPROVED, version };
 }
 
 export function armedMessage(requestId) {

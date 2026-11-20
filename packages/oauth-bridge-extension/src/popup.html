@@ -112,18 +112,14 @@
   </head>
   <body>
     <h1>OmniRoute Sign-in Helper</h1>
-    <section>
-      <p id="note" class="muted" hidden>Open your OmniRoute dashboard in this tab to approve it.</p>
-      <div id="current" hidden>
-        <p class="origin" id="origin"></p>
-        <button id="approve" class="primary" type="button">Use with this site</button>
-      </div>
-      <p id="status" class="status" role="status"></p>
-    </section>
+    <p class="muted">
+      Dashboards are approved from the Connect dialog of your OmniRoute dashboard.
+    </p>
     <section>
       <h2>Approved dashboards</h2>
       <p id="empty" class="muted">None yet.</p>
       <ul id="list"></ul>
+      <p id="status" class="status" role="status"></p>
     </section>
     <footer>Nothing leaves your browser except the redirect to your own dashboard.</footer>
     <script type="module" src="popup.js"></script>

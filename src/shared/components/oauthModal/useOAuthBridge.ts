@@ -3,24 +3,37 @@
 /**
  * Dashboard side of the OmniRoute Sign-in Helper (OAuth bridge) browser extension.
  *
- * Wire protocol (window.postMessage, targetOrigin = location.origin, both directions):
- * - extension -> page: `{source: "omniroute-oauth-bridge", type: "ready", version}`; the
- *   extension also sets `document.documentElement.dataset.omnirouteOauthBridge = version`.
- * - page -> extension: `{source: "omniroute-dashboard", type: "oauth-bridge:arm", requestId,
+ * While a Connect dialog is open the page holds one hidden iframe,
+ * `chrome-extension://<id>/bridge.html` (BridgeFrame in helperExtension.ts), and talks to it with
+ * postMessage only (targetOrigin = the extension origin; replies are accepted only from that
+ * iframe's window and origin):
+ * - bridge -> page: `{source: "omniroute-oauth-bridge", type: "ready", version, approved}`, and
+ *   `{type: "approved", version}` once the operator allows this dashboard.
+ * - page -> bridge: `{source: "omniroute-dashboard", type: "oauth-bridge:arm", requestId,
  *   provider, state, redirectUri}`.
- * - extension -> page: `{source: "omniroute-oauth-bridge", type: "oauth-bridge:armed" |
+ * - bridge -> page: `{source: "omniroute-oauth-bridge", type: "oauth-bridge:armed" |
  *   "oauth-bridge:error", requestId, reason?}`.
  *
  * Once armed, the provider's redirect for that state is sent to `<origin>/callback?<query>`
  * and src/app/callback/page.tsx relays code/state to the open OAuthModal as usual.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { getExternalRedirect } from "@/lib/oauth/externalRedirects";
+import {
+  BRIDGE_ARM_TIMEOUT_MS,
+  BRIDGE_SOURCE,
+  DASHBOARD_SOURCE,
+  bridgeFrameData,
+  getBridgeFrame,
+  type BridgeArmRequest,
+  type BridgeMessageEvent,
+  type BridgeSnapshot,
+} from "./helperExtension";
 
-export const BRIDGE_SOURCE = "omniroute-oauth-bridge";
-export const DASHBOARD_SOURCE = "omniroute-dashboard";
-export const BRIDGE_ARM_TIMEOUT_MS = 1500;
+export { BRIDGE_ARM_TIMEOUT_MS, BRIDGE_SOURCE, DASHBOARD_SOURCE };
+export type { BridgeArmRequest, BridgeMessageEvent };
+
 /** Registry phases the dashboard bridges (phase B enabled "later"); the one place to gate. */
 export const BRIDGE_ENABLED_PHASES = ["major", "later"] as const;
 
@@ -28,48 +41,24 @@ export const BRIDGE_ENABLED_PHASES = ["major", "later"] as const;
 export const BRIDGE_DOCS_URL =
   "https://github.com/cheaper-inference/OmniRoute/blob/main/docs/guides/REMOTE-MODE.md#sign-in-helper-extension";
 
-/** The subset of MessageEvent the guards read (keeps them testable without a DOM). */
-export type BridgeMessageEvent = { source: unknown; origin: string; data: unknown };
-export type BridgeLocation = { origin: string };
-/** The `window` the message must come from; defaults to the global window. */
-export type BridgeWindowRef = unknown;
-
-export type BridgeArmRequest = { provider: string; state: string; redirectUri: string };
-
-function bridgeData(
-  event: BridgeMessageEvent,
-  location: BridgeLocation,
-  self: BridgeWindowRef
-): Record<string, unknown> | null {
-  if (!event || event.source !== self || event.origin !== location.origin) return null;
-  const data = event.data;
-  if (!data || typeof data !== "object") return null;
-  const record = data as Record<string, unknown>;
-  return record.source === BRIDGE_SOURCE ? record : null;
-}
-
-function currentWindow(): BridgeWindowRef {
-  return typeof window === "undefined" ? undefined : window;
-}
-
-/** A `ready` announcement from the extension's content script in this same page. */
+/** A `ready` announcement from the bridge frame (`frameWindow`) on the extension origin. */
 export function isBridgeReadyMessage(
   event: BridgeMessageEvent,
-  location: BridgeLocation,
-  self: BridgeWindowRef = currentWindow()
+  frameWindow: unknown,
+  extensionOrigin: string
 ): boolean {
-  const data = bridgeData(event, location, self);
+  const data = bridgeFrameData(event, frameWindow, extensionOrigin);
   return !!data && data.type === "ready";
 }
 
-/** An `armed` / `error` reply to the arm request `requestId`. */
+/** An `armed` / `error` reply from the bridge frame to the arm request `requestId`. */
 export function isBridgeReplyMessage(
   event: BridgeMessageEvent,
-  location: BridgeLocation,
-  requestId: string,
-  self: BridgeWindowRef = currentWindow()
+  frameWindow: unknown,
+  extensionOrigin: string,
+  requestId: string
 ): boolean {
-  const data = bridgeData(event, location, self);
+  const data = bridgeFrameData(event, frameWindow, extensionOrigin);
   return (
     !!data &&
     !!requestId &&
@@ -160,84 +149,44 @@ export function newBridgeRequestId(): string {
   }
 }
 
+const IDLE_SNAPSHOT: BridgeSnapshot = { status: "idle", version: null };
+const noopSubscribe = () => () => {};
+const idleSnapshot = () => IDLE_SNAPSHOT;
+
+/** The version to arm with: set only when the bridge frame is ready and this origin approved. */
+export function bridgeVersionOf(snapshot: BridgeSnapshot): string | null {
+  return snapshot.status === "ready" ? snapshot.version || "1" : null;
+}
+
 /**
- * Detects the extension and arms it for one OAuth attempt.
- * `arm` resolves true on `armed`, false on `error` or after BRIDGE_ARM_TIMEOUT_MS.
+ * Holds the page's hidden bridge frame while `active` (the Connect dialog is open) and arms it
+ * for one OAuth attempt. `bridgeVersion` is non-null only once the helper is ready on this
+ * (approved) dashboard; it turns non-null by itself when the operator approves it.
+ * `arm` resolves true on `armed`, false on `error`, when not ready, or after
+ * BRIDGE_ARM_TIMEOUT_MS.
  */
-export function useOAuthBridge(): {
+export function useOAuthBridge(active: boolean = true): {
   bridgeVersion: string | null;
   arm: (req: BridgeArmRequest) => Promise<boolean>;
 } {
-  const [bridgeVersion, setBridgeVersion] = useState<string | null>(null);
+  const frame = typeof window === "undefined" ? null : getBridgeFrame();
+  const snapshot = useSyncExternalStore(
+    frame ? frame.subscribe : noopSubscribe,
+    frame ? frame.snapshot : idleSnapshot,
+    idleSnapshot
+  );
 
   useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    // Read the dataset marker after mount (deferred so hydration matches the server render).
-    const initialTimer = setTimeout(() => {
-      const datasetVersion = document.documentElement?.dataset?.omnirouteOauthBridge;
-      if (datasetVersion) setBridgeVersion((prev) => prev ?? datasetVersion);
-    }, 0);
+    if (!active || !frame) return undefined;
+    return frame.acquire();
+  }, [active, frame]);
 
-    const onMessage = (event: MessageEvent) => {
-      if (!isBridgeReadyMessage(event, window.location)) return;
-      const version = (event.data as Record<string, unknown>).version;
-      const fallback = document.documentElement?.dataset?.omnirouteOauthBridge || "1";
-      setBridgeVersion(version !== undefined && version !== null ? String(version) : fallback);
-    };
-    window.addEventListener("message", onMessage);
-    return () => {
-      clearTimeout(initialTimer);
-      window.removeEventListener("message", onMessage);
-    };
-  }, []);
+  const arm = useCallback(
+    (req: BridgeArmRequest): Promise<boolean> => (frame ? frame.arm(req) : Promise.resolve(false)),
+    [frame]
+  );
 
-  const arm = useCallback((req: BridgeArmRequest): Promise<boolean> => {
-    if (typeof window === "undefined") return Promise.resolve(false);
-    const { provider, state, redirectUri } = req || ({} as BridgeArmRequest);
-    if (!provider || !state || !redirectUri) return Promise.resolve(false);
-
-    const requestId = newBridgeRequestId();
-    return new Promise<boolean>((resolve) => {
-      let settled = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-
-      const finish = (result: boolean) => {
-        if (settled) return;
-        settled = true;
-        window.removeEventListener("message", onMessage);
-        if (timer !== undefined) clearTimeout(timer);
-        resolve(result);
-      };
-
-      function onMessage(event: MessageEvent) {
-        if (!isBridgeReplyMessage(event, window.location, requestId)) return;
-        const type = (event.data as Record<string, unknown>).type;
-        if (type === "oauth-bridge:armed") finish(true);
-        else if (type === "oauth-bridge:error") finish(false);
-      }
-
-      window.addEventListener("message", onMessage);
-      timer = setTimeout(() => finish(false), BRIDGE_ARM_TIMEOUT_MS);
-
-      try {
-        window.postMessage(
-          {
-            source: DASHBOARD_SOURCE,
-            type: "oauth-bridge:arm",
-            requestId,
-            provider,
-            state,
-            redirectUri,
-          },
-          window.location.origin
-        );
-      } catch {
-        finish(false);
-      }
-    });
-  }, []);
-
-  return { bridgeVersion, arm };
+  return { bridgeVersion: active ? bridgeVersionOf(snapshot) : null, arm };
 }
 
 /** True when the dashboard is open on the operator's own machine (no bridge needed). */

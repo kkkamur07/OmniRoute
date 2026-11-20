@@ -30,15 +30,17 @@ test("manifest basics and permissions", () => {
   assert.deepEqual(manifest.permissions, [
     "declarativeNetRequest",
     "storage",
-    "scripting",
     "webNavigation",
     "alarms",
-    "activeTab",
   ]);
-  // activeTab (not tabs) is what lets the popup read the focused dashboard tab's URL.
-  assert.ok(manifest.permissions.includes("activeTab"));
-  assert.ok(!manifest.permissions.includes("tabs"));
-  assert.deepEqual(manifest.optional_host_permissions, ["http://*/*", "https://*/*"]);
+  // The bridge frame replaced the content script: no scripting, activeTab, tabs or per-dashboard
+  // host permission is requested, at install or at runtime.
+  for (const gone of ["scripting", "activeTab", "tabs"]) {
+    assert.ok(!manifest.permissions.includes(gone), gone);
+  }
+  assert.equal(manifest.optional_host_permissions, undefined);
+  assert.equal(manifest.optional_permissions, undefined);
+  assert.equal(manifest.content_scripts, undefined);
   for (const p of [...manifest.host_permissions, ...manifest.permissions]) {
     assert.notEqual(p, "<all_urls>");
   }
@@ -70,7 +72,9 @@ test("referenced files exist", () => {
   const exists = (rel: string) => fs.existsSync(path.join(EXT, rel));
   assert.ok(exists(manifest.background.service_worker));
   assert.ok(exists(manifest.action.default_popup));
-  assert.ok(exists("src/content.js"));
+  assert.ok(!exists("src/content.js"));
+  assert.ok(!exists("ping.json"));
+  assert.ok(exists("src/bridge.js"));
   const html = fs.readFileSync(path.join(EXT, manifest.action.default_popup), "utf8");
   const dir = path.dirname(manifest.action.default_popup);
   const srcs = [...html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)].map((m) => m[1]);
@@ -114,29 +118,40 @@ test("manifest key pins the documented extension ID", async () => {
   assert.ok(readme.includes(id), "README records the extension ID");
 });
 
-test("web_accessible_resources expose ping.json and the approve page only", () => {
+test("web_accessible_resources expose the bridge frame and the approve page only", () => {
   assert.deepEqual(manifest.web_accessible_resources, [
     {
-      resources: ["ping.json", "approve.html", "src/approve.js", "src/approve.css"],
+      resources: [
+        "approve.html",
+        "bridge.html",
+        "src/approve.js",
+        "src/approve.css",
+        "src/bridge.js",
+      ],
       matches: ["<all_urls>"],
     },
   ]);
   for (const r of manifest.web_accessible_resources[0].resources) {
     assert.ok(fs.existsSync(path.join(EXT, r)), r);
   }
-  const ping = JSON.parse(fs.readFileSync(path.join(EXT, "ping.json"), "utf8"));
-  assert.deepEqual(ping, { name: "omniroute-oauth-bridge", version: 1 });
   const html = fs.readFileSync(path.join(EXT, "approve.html"), "utf8");
   assert.match(html, /src="src\/approve\.js"/);
   assert.match(html, /href="src\/approve\.css"/);
+  const bridge = fs.readFileSync(path.join(EXT, "bridge.html"), "utf8");
+  assert.match(bridge, /<script type="module" src="src\/bridge\.js"><\/script>/);
+  // The frame is invisible plumbing: no visible content of its own.
+  assert.doesNotMatch(bridge, /<(button|input|form|a)\b/);
 });
 
 test("store package excludes tests and docs and drops the manifest key", async () => {
   const pkg = await import("../../../../scripts/build/oauth-bridge-package.mjs");
   const files: string[] = pkg.listPackageFiles();
   assert.ok(files.includes("manifest.json"));
-  assert.ok(files.includes("ping.json"));
   assert.ok(files.includes("approve.html"));
+  assert.ok(files.includes("bridge.html"));
+  assert.ok(files.includes("src/bridge.js"));
+  assert.ok(!files.includes("ping.json"));
+  assert.ok(!files.includes("src/content.js"));
   assert.ok(files.includes("src/background.js"));
   assert.ok(!files.some((f) => /README|\.test\./.test(f)));
   const os = await import("node:os");
@@ -170,10 +185,40 @@ test("store package excludes tests and docs and drops the manifest key", async (
   }
 });
 
-test("extension pages cannot be framed", () => {
+test("bridge.html is framable; approve.html guards itself instead", () => {
+  // No frame-ancestors: bridge.html must load inside any dashboard origin.
   assert.deepEqual(manifest.content_security_policy, {
-    extension_pages: "script-src 'self'; object-src 'self'; frame-ancestors 'none'",
+    extension_pages: "script-src 'self'; object-src 'self'",
   });
   const html = fs.readFileSync(path.join(EXT, "approve.html"), "utf8");
   assert.match(html, /<button id="allow"[^>]*\sdisabled[\s>]/);
+  const approveJs = fs.readFileSync(path.join(EXT, "src", "approve.js"), "utf8");
+  assert.match(approveJs, /if \(isFramed\(window\)\)/);
+  assert.match(approveJs, /isFramed: isFramed\(window\)/);
+  // The Allow click no longer asks Chrome for a permission (that prompt could hang).
+  assert.doesNotMatch(approveJs, /permissions\.request/);
+});
+
+test("the dashboard CSP frame-src allows the pinned helper ID (and a valid override only)", async () => {
+  const csp = await import("../../../../scripts/build/oauth-bridge-csp.mjs");
+  const gen = await import("../../../../scripts/build/oauth-bridge-manifest.mjs");
+  assert.equal(csp.DEFAULT_OAUTH_HELPER_EXTENSION_ID, gen.EXTENSION_ID);
+  assert.equal(
+    csp.oauthHelperFrameSrc({}),
+    `frame-src 'self' chrome-extension://${gen.EXTENSION_ID}`
+  );
+  const other = "abcdefghijklmnopabcdefghijklmnop";
+  assert.equal(
+    csp.oauthHelperFrameSrc({ NEXT_PUBLIC_OAUTH_HELPER_EXTENSION_ID: ` ${other} ` }),
+    `frame-src 'self' chrome-extension://${other}`
+  );
+  for (const bad of ["x", "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", "* 'unsafe-inline'", ""]) {
+    assert.equal(
+      csp.oauthHelperExtensionId({ NEXT_PUBLIC_OAUTH_HELPER_EXTENSION_ID: bad }),
+      gen.EXTENSION_ID,
+      bad
+    );
+  }
+  const config = fs.readFileSync(path.join(ROOT, "next.config.mjs"), "utf8");
+  assert.match(config, /oauthHelperFrameSrc\(\),\n\]\.join\("; "\)/);
 });

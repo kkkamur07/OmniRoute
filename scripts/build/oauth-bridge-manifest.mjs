@@ -20,25 +20,33 @@ export const README_PATH = path.join(EXT_DIR, "README.md");
 export const ALLOWED_PATH = path.join(EXT_DIR, "src", "allowedRedirects.generated.js");
 
 // Public half of the extension signing key. It pins the unpacked extension ID to
-// EXTENSION_ID below so the dashboard can reach ping.json / approve.html. The private key is
+// EXTENSION_ID below so the dashboard can embed bridge.html and open approve.html. The private key is
 // never committed; the Chrome Web Store signs published builds with its own key.
 export const MANIFEST_KEY =
   "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmfZ3zejOVOabJdSzPpxHFov6KTc73n/AadCWYidkLWesLKbgF/RRVNrhCwUkZYJcbRdRo+qa5QLdN6frjeQEU51BmmHQb2c6MGuQBDK9srWZw3HI3ehHYuvx7VCU/p53X7N3V0n+ptjN7E3yyiiGVIApGJs/7EIIN/Ny9yzlRAtzmCAmRQbAuzAIpFDhSpew/4ww5h6WBccXsn/wczAttKLDfGNEnBsnSbDDs7lymKavkSPy7MXJX2wbHYPjrfiZy6vXhneBP+rCD+6AFBJacM6E6vxAXSMSX2tNuI1/ig7IvbJUmkDk8YpuHE0F1YNuD0ngYL6mlz3EESVv4k8FZwIDAQAB";
 export const EXTENSION_ID = "gmckjokkoeeokoldknjmaipdbnceldil";
 
-// Pages the dashboard may load: ping.json (installed-but-not-approved detection) and the
-// approve page opened with window.open. Fixed here so the checked-in manifest cannot drift.
+// Pages the dashboard may load: bridge.html (the hidden frame it talks to; its `ready` message
+// doubles as install detection) and the approve page opened with window.open. Fixed here so the
+// checked-in manifest cannot drift.
 export const WEB_ACCESSIBLE_RESOURCES = [
   {
-    resources: ["ping.json", "approve.html", "src/approve.js", "src/approve.css"],
+    resources: [
+      "approve.html",
+      "bridge.html",
+      "src/approve.js",
+      "src/approve.css",
+      "src/bridge.js",
+    ],
     matches: ["<all_urls>"],
   },
 ];
 
-// frame-ancestors 'none' keeps approve.html (web-accessible to every site) out of iframes, so
-// a site cannot overlay a decoy on its Allow button. script-src / object-src are the MV3 minimum.
+// The MV3 minimum. No frame-ancestors: bridge.html must be framable by any dashboard origin.
+// approve.html defends itself instead (isFramed in approve.js, plus the worker rejecting an
+// approval that is not from a top-level tab).
 export const CONTENT_SECURITY_POLICY = {
-  extension_pages: "script-src 'self'; object-src 'self'; frame-ancestors 'none'",
+  extension_pages: "script-src 'self'; object-src 'self'",
 };
 
 export const BASE_MANIFEST = {
@@ -46,17 +54,10 @@ export const BASE_MANIFEST = {
   name: "OmniRoute Sign-in Helper",
   version: "0.1.0",
   description: "Completes OmniRoute OAuth sign-ins on remote dashboards without copy-paste.",
-  // activeTab lets the popup read the focused tab's URL before its origin is approved.
-  permissions: [
-    "declarativeNetRequest",
-    "storage",
-    "scripting",
-    "webNavigation",
-    "alarms",
-    "activeTab",
-  ],
+  // No scripting, activeTab or per-dashboard host permission: the dashboard talks to the
+  // extension through the bridge.html frame, and approval is a stored list.
+  permissions: ["declarativeNetRequest", "storage", "webNavigation", "alarms"],
   host_permissions: [],
-  optional_host_permissions: ["http://*/*", "https://*/*"],
   background: { service_worker: "src/background.js", type: "module" },
   action: { default_title: "OmniRoute Sign-in Helper", default_popup: "src/popup.html" },
   web_accessible_resources: WEB_ACCESSIBLE_RESOURCES,
@@ -72,10 +73,12 @@ export function buildManifest(existing) {
   const hostPermissions = [...new Set(supported().map((e) => e.hostPermission))].sort();
   // permissions, web_accessible_resources, content_security_policy and key always come from
   // BASE_MANIFEST so a change here reaches the checked-in file.
+  // optional_host_permissions came with the old content-script design; drop it from older files.
+  const { optional_host_permissions: _dropped, ...rest } = base;
   return (
     JSON.stringify(
       {
-        ...base,
+        ...rest,
         permissions: BASE_MANIFEST.permissions,
         host_permissions: hostPermissions,
         web_accessible_resources: BASE_MANIFEST.web_accessible_resources,

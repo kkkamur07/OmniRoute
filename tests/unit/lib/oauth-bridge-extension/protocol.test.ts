@@ -3,17 +3,23 @@ import assert from "node:assert/strict";
 
 import {
   LIMITS,
+  MSG_APPROVED,
+  MSG_APPROVE_ORIGIN,
   MSG_ARM,
   MSG_ARMED,
+  MSG_BRIDGE_STATUS,
   MSG_ERROR,
+  MSG_ORIGIN_APPROVED,
   MSG_READY,
   REASONS,
   RULE_TTL_MINUTES,
   SOURCE_DASHBOARD,
   SOURCE_EXTENSION,
+  approvedMessage,
   armedMessage,
   errorMessage,
   isDashboardArmMessage,
+  isDashboardStatusMessage,
   isValidOrigin,
   isValidProvider,
   isValidRedirectUri,
@@ -32,6 +38,10 @@ test("wire constants", () => {
   assert.equal(MSG_ARM, "oauth-bridge:arm");
   assert.equal(MSG_ARMED, "oauth-bridge:armed");
   assert.equal(MSG_ERROR, "oauth-bridge:error");
+  assert.equal(MSG_APPROVED, "approved");
+  assert.equal(MSG_BRIDGE_STATUS, "oauth-bridge:status");
+  assert.equal(MSG_APPROVE_ORIGIN, "approve-origin");
+  assert.equal(MSG_ORIGIN_APPROVED, "origin-approved");
   assert.equal(RULE_TTL_MINUTES, 10);
 });
 
@@ -149,10 +159,31 @@ test("isDashboardArmMessage", () => {
   assert.equal(isDashboardArmMessage(undefined), false);
 });
 
+test("isDashboardStatusMessage", () => {
+  assert.equal(
+    isDashboardStatusMessage({ source: SOURCE_DASHBOARD, type: MSG_BRIDGE_STATUS }),
+    true
+  );
+  assert.equal(
+    isDashboardStatusMessage({ source: SOURCE_EXTENSION, type: MSG_BRIDGE_STATUS }),
+    false
+  );
+  assert.equal(isDashboardStatusMessage({ source: SOURCE_DASHBOARD, type: MSG_ARM }), false);
+  assert.equal(isDashboardStatusMessage(null), false);
+});
+
 test("message builders", () => {
   assert.deepEqual(readyMessage("1.2.3"), {
     source: "omniroute-oauth-bridge",
     type: "ready",
+    version: "1.2.3",
+    approved: false,
+  });
+  assert.equal(readyMessage("1", true).approved, true);
+  assert.equal(readyMessage("1", "yes" as unknown as boolean).approved, false);
+  assert.deepEqual(approvedMessage("1.2.3"), {
+    source: "omniroute-oauth-bridge",
+    type: "approved",
     version: "1.2.3",
   });
   assert.deepEqual(armedMessage("r1"), {

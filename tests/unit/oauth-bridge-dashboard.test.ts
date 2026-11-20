@@ -24,7 +24,8 @@ import {
 const modalSource = readFileSync("src/shared/components/OAuthModal.tsx", "utf8");
 
 const ORIGIN = "https://dash.example.com";
-const location = { origin: ORIGIN };
+// Replies come from the bridge iframe's window on the extension origin, never from the page.
+const EXT = "chrome-extension://gmckjokkoeeokoldknjmaipdbnceldil";
 const self = {};
 const other = {};
 
@@ -38,74 +39,77 @@ const errored = {
 };
 
 test("isBridgeReadyMessage accepts a correct ready message", () => {
-  assert.equal(
-    isBridgeReadyMessage({ source: self, origin: ORIGIN, data: ready }, location, self),
-    true
-  );
+  assert.equal(isBridgeReadyMessage({ source: self, origin: EXT, data: ready }, self, EXT), true);
 });
 
 test("isBridgeReadyMessage rejects bad origin, source window, data source, type and data", () => {
-  const ok = { source: self, origin: ORIGIN, data: ready };
+  const ok = { source: self, origin: EXT, data: ready };
   assert.equal(
-    isBridgeReadyMessage({ ...ok, origin: "https://evil.example.com" }, location, self),
+    isBridgeReadyMessage({ ...ok, origin: "https://evil.example.com" }, self, EXT),
     false
   );
-  assert.equal(isBridgeReadyMessage({ ...ok, source: other }, location, self), false);
+  assert.equal(isBridgeReadyMessage({ ...ok, source: other }, self, EXT), false);
+  // The dashboard page (or a script on it) posting a fake ready to itself.
+  assert.equal(isBridgeReadyMessage({ ...ok, origin: ORIGIN }, self, EXT), false);
+  // Another extension's frame.
   assert.equal(
     isBridgeReadyMessage(
-      { ...ok, data: { ...ready, source: "omniroute-dashboard" } },
-      location,
-      self
+      { ...ok, origin: "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      self,
+      EXT
     ),
     false
   );
+  // No bridge frame mounted (frame window null).
+  assert.equal(isBridgeReadyMessage(ok, null, EXT), false);
   assert.equal(
-    isBridgeReadyMessage({ ...ok, data: { ...ready, source: "x" } }, location, self),
+    isBridgeReadyMessage({ ...ok, data: { ...ready, source: "omniroute-dashboard" } }, self, EXT),
     false
   );
+  assert.equal(isBridgeReadyMessage({ ...ok, data: { ...ready, source: "x" } }, self, EXT), false);
   assert.equal(
-    isBridgeReadyMessage({ ...ok, data: { ...ready, type: "other" } }, location, self),
+    isBridgeReadyMessage({ ...ok, data: { ...ready, type: "other" } }, self, EXT),
     false
   );
-  assert.equal(isBridgeReadyMessage({ ...ok, data: "ready" }, location, self), false);
-  assert.equal(isBridgeReadyMessage({ ...ok, data: 5 }, location, self), false);
-  assert.equal(isBridgeReadyMessage({ ...ok, data: null }, location, self), false);
+  assert.equal(isBridgeReadyMessage({ ...ok, data: "ready" }, self, EXT), false);
+  assert.equal(isBridgeReadyMessage({ ...ok, data: 5 }, self, EXT), false);
+  assert.equal(isBridgeReadyMessage({ ...ok, data: null }, self, EXT), false);
 });
 
 test("isBridgeReplyMessage accepts armed and error replies with matching requestId", () => {
   assert.equal(
-    isBridgeReplyMessage({ source: self, origin: ORIGIN, data: armed }, location, "r1", self),
+    isBridgeReplyMessage({ source: self, origin: EXT, data: armed }, self, EXT, "r1"),
     true
   );
   assert.equal(
-    isBridgeReplyMessage({ source: self, origin: ORIGIN, data: errored }, location, "r1", self),
+    isBridgeReplyMessage({ source: self, origin: EXT, data: errored }, self, EXT, "r1"),
     true
   );
 });
 
 test("isBridgeReplyMessage rejects mismatches and non-reply messages", () => {
-  const ok = { source: self, origin: ORIGIN, data: armed };
-  assert.equal(isBridgeReplyMessage(ok, location, "r2", self), false);
+  const ok = { source: self, origin: EXT, data: armed };
+  assert.equal(isBridgeReplyMessage(ok, self, EXT, "r2"), false);
   assert.equal(
-    isBridgeReplyMessage({ ...ok, data: { ...armed, requestId: "" } }, location, "", self),
+    isBridgeReplyMessage({ ...ok, data: { ...armed, requestId: "" } }, self, EXT, ""),
     false
   );
   assert.equal(
-    isBridgeReplyMessage({ ...ok, origin: "https://evil.example.com" }, location, "r1", self),
+    isBridgeReplyMessage({ ...ok, origin: "https://evil.example.com" }, self, EXT, "r1"),
     false
   );
-  assert.equal(isBridgeReplyMessage({ ...ok, source: other }, location, "r1", self), false);
+  assert.equal(isBridgeReplyMessage({ ...ok, source: other }, self, EXT, "r1"), false);
   assert.equal(
     isBridgeReplyMessage(
       { ...ok, data: { ...armed, source: "omniroute-dashboard" } },
-      location,
-      "r1",
-      self
+      self,
+      EXT,
+      "r1"
     ),
     false
   );
   assert.equal(
-    isBridgeReplyMessage({ ...ok, data: { ...ready, requestId: "r1" } }, location, "r1", self),
+    isBridgeReplyMessage({ ...ok, data: { ...ready, requestId: "r1" } }, self, EXT, "r1"),
     false
   );
   assert.equal(
@@ -114,9 +118,9 @@ test("isBridgeReplyMessage rejects mismatches and non-reply messages", () => {
         ...ok,
         data: { source: "omniroute-dashboard", type: "oauth-bridge:arm", requestId: "r1" },
       },
-      location,
-      "r1",
-      self
+      self,
+      EXT,
+      "r1"
     ),
     false
   );

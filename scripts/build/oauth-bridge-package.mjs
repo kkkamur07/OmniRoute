@@ -2,7 +2,7 @@
 
 /**
  * oauth-bridge-package.mjs: zips packages/oauth-bridge-extension for the Chrome Web Store into
- * dist/omniroute-oauth-bridge-<version>.zip. Ships manifest.json, ping.json, approve.html and
+ * dist/omniroute-oauth-bridge-<version>.zip. Ships manifest.json, approve.html, bridge.html and
  * src/** only (no README, no tests, no dotfiles). Dependency-free: stored with zlib deflate.
  *
  * Usage: node scripts/build/oauth-bridge-package.mjs [--out <dir>]
@@ -15,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const EXT_DIR = path.join(ROOT, "packages", "oauth-bridge-extension");
-const TOP_LEVEL_FILES = ["manifest.json", "ping.json", "approve.html"];
+const TOP_LEVEL_FILES = ["manifest.json", "approve.html", "bridge.html"];
 const EXCLUDED = /(^|\/)(\.[^/]*|[^/]*\.test\.[^/]+|README\.md)$/;
 
 /** Relative paths (posix) of every file that goes into the store zip, sorted. */

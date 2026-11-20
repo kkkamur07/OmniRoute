@@ -1,18 +1,20 @@
 /**
  * Approve page (approve.html?origin=<dashboard origin>), opened by the dashboard with
- * window.open. Shows the origin and one "Allow on <host>" button. The click handler requests
- * the host permission directly (it must run inside the user gesture), then asks the service
- * worker to store the approval and inject the content script into open dashboard tabs.
+ * window.open. Shows the origin and one "Allow on <host>" button. The click asks the service
+ * worker to store the approval; no Chrome permission prompt is involved. The worker then tells
+ * the dashboard's bridge frame and closes this tab about a second later.
  *
- * Clickjacking defenses: the page refuses to render the button when framed (isFramed, plus
- * `frame-ancestors 'none'` in the manifest CSP), and the button stays disabled for
- * ENABLE_DELAY_MS after it appears so a click aimed at a decoy cannot land on it.
+ * Clickjacking defenses: the page refuses to render the button when framed (isFramed; the
+ * worker also rejects a message that reports isFramed or does not come from a top-level tab),
+ * and the button stays disabled for ENABLE_DELAY_MS after it appears so a click aimed at a decoy
+ * cannot land on it.
  */
 
 import { approveOriginFromSearch } from "./origin.js";
 import { MSG_APPROVE_ORIGIN } from "./protocol.js";
 
-const CLOSE_DELAY_MS = 1500;
+/** Fallback close if the worker could not close the tab (it normally does after ~1 s). */
+const FALLBACK_CLOSE_DELAY_MS = 3000;
 export const ENABLE_DELAY_MS = 500;
 
 /**
@@ -48,38 +50,28 @@ function setStatus(text, kind) {
   el.className = kind ? `status ${kind}` : "status";
 }
 
-function onAllowClick(origin) {
+async function onAllowClick(origin) {
   const button = $("allow");
   button.disabled = true;
   setStatus("");
-  // No await before this call: Chrome drops the request outside the click gesture.
-  chrome.permissions.request({ origins: [`${origin}/*`] }).then(
-    async (granted) => {
-      if (!granted) {
-        button.disabled = false;
-        setStatus("Permission was not granted.", "fail");
-        return;
-      }
-      let response = null;
-      try {
-        response = await chrome.runtime.sendMessage({ type: MSG_APPROVE_ORIGIN, origin });
-      } catch {
-        response = null;
-      }
-      if (!response || response.ok !== true) {
-        button.disabled = false;
-        setStatus("Could not save the approval. Try again.", "fail");
-        return;
-      }
-      button.hidden = true;
-      setStatus("Allowed. You can close this window.", "ok");
-      setTimeout(() => window.close(), CLOSE_DELAY_MS);
-    },
-    () => {
-      button.disabled = false;
-      setStatus("Permission was not granted.", "fail");
-    }
-  );
+  let response = null;
+  try {
+    response = await chrome.runtime.sendMessage({
+      type: MSG_APPROVE_ORIGIN,
+      origin,
+      isFramed: isFramed(window),
+    });
+  } catch {
+    response = null;
+  }
+  if (!response || response.ok !== true) {
+    button.disabled = false;
+    setStatus("Could not save the approval. Try again.", "fail");
+    return;
+  }
+  button.hidden = true;
+  setStatus("Allowed. This window closes by itself.", "ok");
+  setTimeout(() => window.close(), FALLBACK_CLOSE_DELAY_MS);
 }
 
 function init() {

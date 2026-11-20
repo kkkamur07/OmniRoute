@@ -18,34 +18,53 @@ Install the helper from the Chrome Web Store once it is published (see
 ### Extension ID
 
 `manifest.json` carries a committed public `key`, so the unpacked extension always gets the ID
-`gmckjokkoeeokoldknjmaipdbnceldil` on every machine. The dashboard uses that ID to reach
-`ping.json` and `approve.html`; set `NEXT_PUBLIC_OAUTH_HELPER_EXTENSION_ID` to point it at a
+`gmckjokkoeeokoldknjmaipdbnceldil` on every machine. The dashboard uses that ID to load
+`bridge.html` and `approve.html`; set `NEXT_PUBLIC_OAUTH_HELPER_EXTENSION_ID` to point it at a
 different build (for example the Web Store one). The private key is not in the repository.
+
+The dashboard's Content-Security-Policy must allow framing the extension. `next.config.mjs`
+adds `frame-src 'self' chrome-extension://<EXTENSION_ID>` (built by
+`scripts/build/oauth-bridge-csp.mjs`) using the same variable, falling back to the default ID.
+Set `NEXT_PUBLIC_OAUTH_HELPER_EXTENSION_ID` at build time whenever you use a different build,
+or the browser blocks the frame and the helper is never detected.
 
 ## Approve a dashboard
 
 The Connect dialog does this for you: when it finds the helper installed but not yet allowed on
 the dashboard, it opens a small window (`approve.html?origin=<dashboard origin>`) that shows the
-dashboard address and one Allow on `<host>` button. Click it, accept Chrome's permission prompt
-and the window closes itself. Already open dashboard tabs pick the helper up without a reload.
+dashboard address and one Allow on `<host>` button (disabled for the first 500 ms). Click it and
+the window shows Allowed, then closes itself. There is no Chrome permission prompt. The open
+dashboard tab is told the helper is approved and continues the sign-in without a reload.
 
-Manual alternative: with the dashboard tab focused, click the extension icon, then Use with this
-site.
-
-Use Remove in the popup to revoke a dashboard at any time.
+The toolbar popup lists the approved dashboards; use Remove there to revoke one at any time.
 
 ### What a web page can see
 
-- `ping.json` (`{"name":"omniroute-oauth-bridge","version":1}`) is readable from any site, so the
-  dashboard can tell the helper is installed before it is allowed. It reveals nothing else.
+While a Connect dialog is open (desktop Chromium only), the dashboard mounts one hidden iframe,
+`chrome-extension://<id>/bridge.html`, and talks to it with `postMessage` only. There is no
+content script and no page-readable file.
+
+- Any site can embed `bridge.html`. On load it posts
+  `{source:"omniroute-oauth-bridge", type:"ready", version, approved}` to its parent, so any
+  site can learn that the helper is installed, its version, and whether that site itself is
+  approved. It reveals nothing else.
+- Only an approved origin can arm. The frame accepts a message only when it is embedded exactly
+  one level deep (`window.parent === window.top` and one ancestor origin), the message comes from
+  `window.parent`, and `event.origin` equals that ancestor origin. The dashboard origin is never
+  taken from message data, and replies go to that origin only. The service worker accepts arm
+  and status messages only from its own `bridge.html` frames and still requires the origin to be
+  in the approved list.
 - `approve.html` can be opened by any site, but it only acts after you click Allow on the
-  address it shows, exactly like the popup. The service worker accepts the `approve-origin`
-  message from extension pages only (never from content scripts or web pages) and only for an
-  origin whose permission you just granted.
+  address it shows. The service worker accepts `approve-origin` only from `approve.html` loaded
+  as a top-level tab (not framed), and only for the origin in that page's own `?origin=` query.
+
+The dashboard treats the helper as installed when the frame loads and sends `ready` within about
+1.5 seconds, and as absent otherwise.
 
 ## How a sign-in works
 
-1. In the Connect dialog you start a sign-in; the dashboard arms the extension for that one `state`.
+1. In the Connect dialog you start a sign-in; the dashboard arms the extension (through the
+   `bridge.html` frame) for that one `state`.
 2. The extension adds a one-shot redirect rule for that `state` only.
 3. You approve access at the provider; its final redirect is rewritten to
    `<dashboard-origin>/callback?<same query>`.
@@ -106,25 +125,27 @@ fails in that case, so it cannot ship silently.
 - No analytics and no remote code.
 - `code` and `state` values are never logged or stored beyond the one-shot rule.
 - Rules expire after 10 minutes or on first match.
-- The extension only reads pages of dashboards you approved.
+- The extension injects nothing into web pages and reads no page content.
+- It only acts for dashboards you approved.
 
 ## Permissions
 
 - `declarativeNetRequest`: add the one-shot redirect rule.
 - `storage`: remember which dashboards you approved.
-- `scripting`: register and inject the content script on approved dashboards.
 - `webNavigation`: detect the redirect landing so the tab can be closed.
 - `alarms`: expire rules after 10 minutes.
-- `activeTab`: read the focused tab's address when you click the icon, so the popup can offer
-  that dashboard for approval.
-- `host_permissions`: the provider redirect hosts listed above, generated from the registry.
-- `optional_host_permissions` (`http://*/*`, `https://*/*`): requested per dashboard when you
-  click Use with this site.
+- `host_permissions`: loopback (`http://127.0.0.1/*`, `http://localhost/*`) and the provider code
+  pages listed above, generated from the registry. A redirect rule needs host access to the
+  request URL it redirects.
+
+There are no content scripts, no `scripting` or `activeTab`, and no optional host permissions.
+Extension pages use the CSP `script-src 'self'; object-src 'self'`. `approve.html`,
+`bridge.html` and their scripts are web accessible.
 
 ## Publishing to the Chrome Web Store
 
 `npm run oauth-bridge:package` writes `dist/omniroute-oauth-bridge-<version>.zip` (gitignored)
-with `manifest.json`, `ping.json`, `approve.html` and `src/`. The packaged manifest drops `key`,
+with `manifest.json`, `approve.html`, `bridge.html` and `src/`. The packaged manifest drops `key`,
 which the store does not accept; the store assigns its own ID. After the first upload, either
 replace `MANIFEST_KEY` in `scripts/build/oauth-bridge-manifest.mjs` with the public key shown on
 the store's Package page (so unpacked builds share the store ID) or set
@@ -147,21 +168,14 @@ Permission justifications:
 - `declarativeNetRequest`: adds one session redirect rule per sign-in, scoped to the armed
   `state`, that sends the provider's callback to the approved dashboard. Removed on first match
   or after 10 minutes.
-- `scripting`: registers the content script on dashboards the user approved and injects it
-  into already open dashboard tabs right after approval.
 - `storage`: remembers the list of approved dashboard origins and the short-lived armed
   sign-ins.
 - `alarms`: expires each armed redirect rule after 10 minutes.
 - `webNavigation`: notices when the callback page loads so the rule is removed and the
   temporary callback tab is closed.
-- `activeTab`: lets the toolbar popup read the address of the focused tab when the user clicks
-  the icon, so it can offer that dashboard for approval.
 - `host_permissions` (loopback hosts and provider code pages): the redirect rule can only act on
   requests to hosts the extension has access to; these are the fixed callback hosts of the
-  supported providers.
-- `optional_host_permissions` (`http://*/*`, `https://*/*`): requested at runtime for one
-  dashboard origin at a time, only after the user clicks Allow; OmniRoute dashboards are
-  self-hosted on arbitrary domains, so they cannot be listed in advance.
+  supported providers. No other host access is requested.
 
 ## Regenerating
 

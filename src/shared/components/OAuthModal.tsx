@@ -281,8 +281,9 @@ function LegacyOAuthModal({
   }, []);
 
   const { isLocalhost, isTrueLocalhost, placeholderUrl, loopbackLocation } = runtimeLocation;
-  // OmniRoute Sign-in Helper extension: carries registry redirects back to /callback.
-  const { bridgeVersion, arm } = useOAuthBridge();
+  // OmniRoute Sign-in Helper extension: carries registry redirects back to /callback. Its
+  // hidden bridge frame is mounted only while this dialog is open.
+  const { bridgeVersion, arm } = useOAuthBridge(!!isOpen);
   const [bridgeArmed, setBridgeArmed] = useState(false);
   const [connectedAccount, setConnectedAccount] = useState<string | null>(null);
   const callbackProcessedRef = useRef(false);

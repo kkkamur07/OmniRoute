@@ -6,19 +6,12 @@ interface Rule {
   action: { redirect: { regexSubstitution: string } };
   condition: { regexFilter: string };
 }
-interface Script {
-  id: string;
-  matches: string[];
-}
 interface Mock {
   local: Map<string, unknown>;
   session: Map<string, unknown>;
   rules: Rule[];
   alarms: Map<string, unknown>;
   removedTabs: number[];
-  granted: Set<string>;
-  scripts: Script[];
-  scriptCalls: string[];
 }
 
 const mock: Mock = {
@@ -27,10 +20,10 @@ const mock: Mock = {
   rules: [],
   alarms: new Map(),
   removedTabs: [],
-  granted: new Set(),
-  scripts: [],
-  scriptCalls: [],
 };
+
+const EXT_ID = "gmckjokkoeeokoldknjmaipdbnceldil";
+const EXT_BASE = `chrome-extension://${EXT_ID}/`;
 
 function area(store: Map<string, unknown>) {
   return {
@@ -43,7 +36,11 @@ function area(store: Map<string, unknown>) {
 
 // No runtime.onMessage on purpose: the module must not register listeners.
 (globalThis as unknown as Record<string, unknown>).chrome = {
-  runtime: { getManifest: () => ({ version: "0.1.0" }) },
+  runtime: {
+    id: EXT_ID,
+    getManifest: () => ({ version: "0.1.0" }),
+    getURL: (p: string) => `${EXT_BASE}${p}`,
+  },
   storage: { local: area(mock.local), session: area(mock.session) },
   declarativeNetRequest: {
     getSessionRules: async () => structuredClone(mock.rules),
@@ -65,24 +62,6 @@ function area(store: Map<string, unknown>) {
       mock.removedTabs.push(id);
     },
   },
-  permissions: {
-    contains: async (q: { origins: string[] }) => q.origins.every((o) => mock.granted.has(o)),
-  },
-  scripting: {
-    getRegisteredContentScripts: async () => structuredClone(mock.scripts),
-    registerContentScripts: async (s: Script[]) => {
-      mock.scriptCalls.push("register");
-      mock.scripts = structuredClone(s);
-    },
-    updateContentScripts: async (s: Script[]) => {
-      mock.scriptCalls.push("update");
-      mock.scripts = structuredClone(s);
-    },
-    unregisterContentScripts: async () => {
-      mock.scriptCalls.push("unregister");
-      mock.scripts = [];
-    },
-  },
 };
 
 const bg = await import("../../../../packages/oauth-bridge-extension/src/background.js");
@@ -92,7 +71,14 @@ const { escapeRegex: bg_escape } =
 const ORIGIN = "http://localhost:20128";
 const CODEX = "http://localhost:1455/auth/callback";
 const CLAUDE = "https://platform.claude.com/oauth/code/callback";
-const sender = { origin: ORIGIN, tab: { id: 5 } };
+// A bridge.html frame embedded in tab 5 (sender.origin is the extension's, never the page's).
+const sender = {
+  id: EXT_ID,
+  url: `${EXT_BASE}bridge.html`,
+  origin: `chrome-extension://${EXT_ID}`,
+  frameId: 3,
+  tab: { id: 5 },
+};
 
 function reset() {
   mock.local.clear();
@@ -100,9 +86,6 @@ function reset() {
   mock.rules = [];
   mock.alarms.clear();
   mock.removedTabs = [];
-  mock.granted.clear();
-  mock.scripts = [];
-  mock.scriptCalls = [];
   mock.local.set("approvedOrigins", [ORIGIN]);
 }
 
@@ -113,6 +96,7 @@ function msg(over: Record<string, unknown> = {}) {
     provider: "codex",
     state: "st4te",
     redirectUri: CODEX,
+    origin: ORIGIN,
     ...over,
   };
 }
@@ -138,13 +122,52 @@ const commit = (state: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-test("rejects unapproved or missing sender origin", async () => {
+test("isBridgeFrameSender accepts only this extension's bridge.html as an embedded frame", () => {
+  assert.equal(bg.isBridgeFrameSender(sender), true);
+  assert.equal(bg.isBridgeFrameSender({ ...sender, url: `${EXT_BASE}bridge.html?x=1` }), true);
+  const rejected: unknown[] = [
+    undefined,
+    null,
+    {},
+    { ...sender, id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { ...sender, id: undefined },
+    // Top-level bridge.html (not embedded) and a missing frameId.
+    { ...sender, frameId: 0 },
+    { ...sender, frameId: undefined },
+    // Another page of this extension, a look-alike path, a web page and another extension.
+    { ...sender, url: `${EXT_BASE}approve.html` },
+    { ...sender, url: `${EXT_BASE}bridge.html.evil` },
+    { ...sender, url: `${EXT_BASE}src/bridge.html` },
+    { ...sender, url: `${ORIGIN}/bridge.html` },
+    { ...sender, url: "chrome-extension://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/bridge.html" },
+    { ...sender, url: "not a url" },
+    { ...sender, url: undefined },
+  ];
+  for (const s of rejected) assert.equal(bg.isBridgeFrameSender(s), false, JSON.stringify(s));
+});
+
+test("arm from anything but a bridge frame is rejected", async () => {
   reset();
-  assert.deepEqual(await bg.handleArm(msg(), { origin: "http://evil.example" }), {
-    ok: false,
-    reason: "unapproved-origin",
-  });
-  assert.deepEqual(await bg.handleArm(msg(), {}), { ok: false, reason: "unapproved-origin" });
+  const unapproved = { ok: false, reason: "unapproved-origin" };
+  // The old content-script shape: a sender with the page's origin.
+  assert.deepEqual(await bg.handleArm(msg(), { origin: ORIGIN, tab: { id: 5 } }), unapproved);
+  assert.deepEqual(await bg.handleArm(msg(), {}), unapproved);
+  assert.deepEqual(await bg.handleArm(msg(), { ...sender, frameId: 0 }), unapproved);
+  assert.deepEqual(
+    await bg.handleArm(msg(), { ...sender, url: `${EXT_BASE}approve.html` }),
+    unapproved
+  );
+  assert.equal(mock.rules.length, 0);
+});
+
+test("arm requires an approved, valid origin from the bridge", async () => {
+  reset();
+  const unapproved = { ok: false, reason: "unapproved-origin" };
+  assert.deepEqual(await bg.handleArm(msg({ origin: "http://evil.example" }), sender), unapproved);
+  assert.deepEqual(await bg.handleArm(msg({ origin: undefined }), sender), unapproved);
+  assert.deepEqual(await bg.handleArm(msg({ origin: `${ORIGIN}/path` }), sender), unapproved);
+  mock.local.set("approvedOrigins", []);
+  assert.deepEqual(await bg.handleArm(msg(), sender), unapproved);
   assert.equal(mock.rules.length, 0);
 });
 
@@ -153,11 +176,35 @@ test("ignores a dashboardOrigin in the payload", async () => {
   const r = await bg.handleArm(msg({ dashboardOrigin: "http://evil.example" }), sender);
   assert.deepEqual(r, { ok: true });
   assert.equal(mock.rules[0].action.redirect.regexSubstitution, `${ORIGIN}/callback?\\1`);
+  assert.equal(
+    (Object.values(mock.session.get("armed") as object)[0] as { tabId: number }).tabId,
+    5
+  );
+});
+
+test("bridge status reports approval for the frame's origin only", async () => {
   reset();
-  const r2 = await bg.handleArm(msg({ dashboardOrigin: ORIGIN }), {
-    origin: "http://evil.example",
+  const status = (origin: unknown, from: unknown = sender) =>
+    bg.handleBridgeStatus({ type: "oauth-bridge:status", origin }, from);
+  assert.deepEqual(await status(ORIGIN), { ok: true, approved: true, version: "0.1.0" });
+  assert.deepEqual(await status("https://other.example"), {
+    ok: true,
+    approved: false,
+    version: "0.1.0",
   });
-  assert.equal(r2.ok, false);
+  assert.deepEqual(await status("javascript:alert(1)"), { ok: false, reason: "invalid-message" });
+  assert.deepEqual(await status(ORIGIN, { ...sender, frameId: 0 }), {
+    ok: false,
+    reason: "unapproved-origin",
+  });
+  assert.deepEqual(await status(ORIGIN, { origin: ORIGIN }), {
+    ok: false,
+    reason: "unapproved-origin",
+  });
+  assert.deepEqual(await bg.handleBridgeStatus({ type: "x", origin: ORIGIN }, sender), {
+    ok: false,
+    reason: "invalid-message",
+  });
 });
 
 test("rejects non-allowed redirect URIs and invalid messages", async () => {
@@ -175,7 +222,7 @@ test("rejects non-allowed redirect URIs and invalid messages", async () => {
     ok: false,
     reason: "invalid-message",
   });
-  assert.deepEqual(await bg.handleArm({ type: "x" }, sender), {
+  assert.deepEqual(await bg.handleArm({ type: "x", origin: ORIGIN }, sender), {
     ok: false,
     reason: "invalid-message",
   });
@@ -285,25 +332,6 @@ test("clearStaleRules removes all rules and our alarms only", async () => {
   assert.equal(mock.rules.length, 0);
   assert.deepEqual([...mock.alarms.keys()], ["unrelated"]);
   assert.deepEqual(mock.session.get("armed"), {});
-});
-
-test("syncContentScripts registers for granted origins and unregisters when none", async () => {
-  reset();
-  mock.local.set("approvedOrigins", [ORIGIN, "https://dash.example.com"]);
-  mock.granted.add(`${ORIGIN}/*`);
-  await bg.syncContentScripts();
-  assert.deepEqual(mock.scriptCalls, ["register"]);
-  assert.deepEqual(mock.scripts[0].matches, [`${ORIGIN}/*`]);
-
-  mock.granted.add("https://dash.example.com/*");
-  await bg.syncContentScripts();
-  assert.deepEqual(mock.scriptCalls, ["register", "update"]);
-  assert.deepEqual(mock.scripts[0].matches, [`${ORIGIN}/*`, "https://dash.example.com/*"]);
-
-  mock.granted.clear();
-  await bg.syncContentScripts();
-  assert.deepEqual(mock.scriptCalls, ["register", "update", "unregister"]);
-  assert.equal(mock.scripts.length, 0);
 });
 
 const ZED_ALLOWED = [

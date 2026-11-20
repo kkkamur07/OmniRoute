@@ -1,7 +1,8 @@
 /**
  * OmniRoute OAuth bridge: service worker.
  *
- * The dashboard (through content.js) arms the extension for ONE sign-in. For that sign-in a
+ * The dashboard (through its hidden bridge.html frame, see bridge.js) arms the extension for ONE
+ * sign-in. For that sign-in a
  * declarativeNetRequest session rule redirects the provider's final redirect (a URI accepted by
  * isArmableRedirect in rules.js: an exact allow-list match, a bare http loopback URI on
  * 127.0.0.1 or localhost, or a bare https URI on an allow-listed provider code page origin,
@@ -20,8 +21,8 @@
  *
  * Storage keys:
  *   chrome.storage.local   "approvedOrigins"  string[] of approved dashboard origins. Written by
- *                                             approveOrigin in approval.js, from the popup or
- *                                             from here for the approve page.
+ *                                             approveOrigin in approval.js for the approve page
+ *                                             and by removeOrigin from the popup.
  *   chrome.storage.session "armed"            {[ruleId]: ArmedEntry}, kept in session storage
  *                                             because the service worker is restarted often.
  * Alarms: "oauth-bridge-rule-<ruleId>", one per armed rule, fired after RULE_TTL_MINUTES.
@@ -35,18 +36,23 @@
 import {
   MSG_APPROVE_ORIGIN,
   MSG_ARM,
+  MSG_BRIDGE_STATUS,
+  MSG_ORIGIN_APPROVED,
   REASONS,
   RULE_TTL_MINUTES,
   isValidOrigin,
   parseArmMessage,
 } from "./protocol.js";
-import { CONTENT_SCRIPT_FILE, CONTENT_SCRIPT_ID, approveOrigin, getApproved } from "./approval.js";
+import { approveOrigin, getApproved } from "./approval.js";
+import { approveOriginFromSearch } from "./origin.js";
 import { ALLOWED_REDIRECTS } from "./allowedRedirects.generated.js";
 import { appendedModeFor, buildRedirectRule, isArmableRedirect } from "./rules.js";
 
 const ARMED_KEY = "armed";
 const ALARM_PREFIX = "oauth-bridge-rule-";
 const CLOSE_TAB_DELAY_MS = 3000;
+/** How long the approve page shows "Allowed" before the worker closes its tab. */
+export const APPROVE_CLOSE_DELAY_MS = 1000;
 const REDIRECT_QUALIFIERS = ["server_redirect", "client_redirect"];
 
 function api() {
@@ -100,9 +106,48 @@ async function disarm(ruleId) {
   }
 }
 
+/** The parsed URL of `sender` when it is a page of this extension at `/<page>`, else null. */
+function extensionPageUrl(sender, page) {
+  const c = api();
+  if (!sender || sender.id !== c.runtime.id || typeof sender.url !== "string") return null;
+  let url;
+  let base;
+  try {
+    url = new URL(sender.url);
+    base = new URL(c.runtime.getURL(""));
+  } catch {
+    return null;
+  }
+  // Compare scheme and host: URL.origin is "null" for non-special schemes in some runtimes.
+  if (url.protocol !== base.protocol || url.host !== base.host || !base.host) return null;
+  if (url.pathname !== `/${page}`) return null;
+  return url;
+}
+
 /**
- * Handles an arm request from content.js. The dashboard origin is taken only from
- * `sender.origin` and must be in "approvedOrigins"; the payload is validated with
+ * True when `sender` is this extension's bridge.html embedded as a frame in a tab (never a
+ * top-level page, a content script or another extension).
+ */
+export function isBridgeFrameSender(sender) {
+  if (!extensionPageUrl(sender, "bridge.html")) return false;
+  return typeof sender.frameId === "number" && sender.frameId > 0;
+}
+
+/**
+ * True when `sender` is this extension's approve.html loaded as the top-level page of a tab.
+ * Returns the origin named in its `?origin=` query, or null.
+ */
+export function approvePageOrigin(sender) {
+  const url = extensionPageUrl(sender, "approve.html");
+  if (!url) return null;
+  if (sender.frameId !== 0 || typeof sender.tab?.id !== "number") return null;
+  return approveOriginFromSearch(url.search);
+}
+
+/**
+ * Handles an arm request from a bridge frame. The sender must be bridge.html (isBridgeFrameSender);
+ * the dashboard origin is `message.origin`, which bridge.js takes from the browser-authenticated
+ * event.origin of its parent, and must be in "approvedOrigins"; the payload is validated with
  * parseArmMessage and the redirect URI must pass isArmableRedirect. On success one
  * session redirect rule is added (replacing any rule already armed for the same state and, in
  * appended mode, every appended-mode rule armed for the same provider), its metadata is stored
@@ -112,7 +157,8 @@ async function disarm(ruleId) {
  */
 export async function handleArm(message, sender, { allowed = ALLOWED_REDIRECTS } = {}) {
   try {
-    const dashboardOrigin = sender?.origin;
+    if (!isBridgeFrameSender(sender)) return fail(REASONS.unapprovedOrigin);
+    const dashboardOrigin = message?.origin;
     if (!isValidOrigin(dashboardOrigin)) return fail(REASONS.unapprovedOrigin);
     const approved = await readApprovedOrigins();
     if (!approved.includes(dashboardOrigin)) return fail(REASONS.unapprovedOrigin);
@@ -298,62 +344,56 @@ export async function clearStaleRules() {
 }
 
 /**
- * Registers (or updates) the "omniroute-oauth-bridge" content script for the approved origins
- * that still have a granted host permission, at document_start, persisted across sessions.
- * Unregisters it when no origin qualifies.
+ * Handles {type: "oauth-bridge:status", origin} from a bridge frame.
+ * @returns {Promise<{ok: true, approved: boolean, version: string} | {ok: false, reason: string}>}
  */
-export async function syncContentScripts() {
-  const c = api();
-  const approved = await readApprovedOrigins();
-  const granted = [];
-  for (const origin of approved) {
-    if (await c.permissions.contains({ origins: [`${origin}/*`] })) granted.push(origin);
+export async function handleBridgeStatus(message, sender) {
+  try {
+    if (!isBridgeFrameSender(sender)) return fail(REASONS.unapprovedOrigin);
+    const origin = message?.origin;
+    if (message?.type !== MSG_BRIDGE_STATUS || !isValidOrigin(origin)) {
+      return fail(REASONS.invalidMessage);
+    }
+    const approved = (await readApprovedOrigins()).includes(origin);
+    return { ok: true, approved, version: getVersion() };
+  } catch {
+    return fail(REASONS.internal);
   }
-  const existing = await c.scripting.getRegisteredContentScripts({ ids: [CONTENT_SCRIPT_ID] });
-  const isRegistered = existing.some((s) => s.id === CONTENT_SCRIPT_ID);
-
-  if (granted.length === 0) {
-    if (isRegistered) await c.scripting.unregisterContentScripts({ ids: [CONTENT_SCRIPT_ID] });
-    return;
-  }
-  const script = {
-    id: CONTENT_SCRIPT_ID,
-    matches: granted.map((o) => `${o}/*`),
-    js: [CONTENT_SCRIPT_FILE],
-    runAt: "document_start",
-    persistAcrossSessions: true,
-  };
-  if (isRegistered) await c.scripting.updateContentScripts([script]);
-  else await c.scripting.registerContentScripts([script]);
 }
 
-/** True when `sender` is a page of this extension (approve.html), not a content script or site. */
-export function isExtensionPageSender(sender) {
-  const c = api();
-  const base = c.runtime.getURL("");
-  if (!sender || sender.id !== c.runtime.id) return false;
-  if (typeof sender.url !== "string" || !sender.url.startsWith(base)) return false;
-  // Content scripts report the page's origin; extension pages report the extension origin.
-  return sender.origin === undefined || `${sender.origin}/` === base;
+/** Tells every bridge frame that `origin` is approved. Best effort: none may be open. */
+export async function broadcastApproved(origin) {
+  try {
+    await api().runtime.sendMessage({ type: MSG_ORIGIN_APPROVED, origin });
+  } catch {
+    // "Receiving end does not exist": no bridge frame is open. storage.onChanged covers the rest.
+  }
 }
 
 /**
- * Handles {type: "approve-origin", origin} from the approve page. Rejects any sender that is
- * not an extension page, any invalid origin and any origin whose host permission the user did
- * not grant (the page requests it in its click handler). On success the origin is stored, the
- * content script is registered and injected into open tabs of that origin.
+ * Handles {type: "approve-origin", origin, isFramed: false} from the approve page. The sender
+ * must be approve.html as the top-level page of a tab, opened for exactly this origin
+ * (approvePageOrigin), and the page must report it is not framed. On success the origin is
+ * stored, bridge frames are told, and the approve tab is closed after APPROVE_CLOSE_DELAY_MS
+ * (the page shows "Allowed" meanwhile; window.close is not reliable for this window).
+ * `options.setTimer` replaces setTimeout (tests only).
  * @returns {Promise<{ok: true} | {ok: false, reason: string}>}
  */
-export async function handleApproveOrigin(message, sender) {
+export async function handleApproveOrigin(message, sender, { setTimer = setTimeout } = {}) {
   try {
-    if (!isExtensionPageSender(sender)) return fail(REASONS.unapprovedOrigin);
+    const pageOrigin = approvePageOrigin(sender);
+    if (!pageOrigin) return fail(REASONS.unapprovedOrigin);
     const origin = message?.origin;
     if (message?.type !== MSG_APPROVE_ORIGIN || !isValidOrigin(origin)) {
       return fail(REASONS.invalidMessage);
     }
-    const granted = await api().permissions.contains({ origins: [`${origin}/*`] });
-    if (!granted) return fail(REASONS.unapprovedOrigin);
+    if (message.isFramed !== false || origin !== pageOrigin) return fail(REASONS.unapprovedOrigin);
     await approveOrigin(api(), origin);
+    await broadcastApproved(origin);
+    const tabId = sender.tab.id;
+    setTimer(() => {
+      Promise.resolve(api().tabs.remove(tabId)).catch(() => {});
+    }, APPROVE_CLOSE_DELAY_MS);
     return { ok: true };
   } catch {
     return fail(REASONS.internal);
@@ -364,28 +404,27 @@ async function onBrowserStartOrInstall() {
   try {
     await clearStaleRules();
   } catch {
-    // Continue so content scripts are still synced.
+    // Session rules die with the browser session anyway.
   }
-  try {
-    await syncContentScripts();
-  } catch {
-    // The popup re-syncs when the operator approves an origin.
-  }
+}
+
+function respond(promise, sendResponse) {
+  promise.then(sendResponse, () => sendResponse(fail(REASONS.internal)));
+  return true;
 }
 
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   const c = api();
   c.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message && message.type === MSG_APPROVE_ORIGIN) {
-      handleApproveOrigin(message, sender).then(sendResponse, () =>
-        sendResponse(fail(REASONS.internal))
-      );
-      return true;
+    if (!message || sender?.id !== c.runtime.id) return false;
+    if (message.type === MSG_APPROVE_ORIGIN) {
+      return respond(handleApproveOrigin(message, sender), sendResponse);
     }
-    if (!message || message.type !== MSG_ARM) return false;
-    if (sender?.id !== c.runtime.id) return false;
-    handleArm(message, sender).then(sendResponse, () => sendResponse(fail(REASONS.internal)));
-    return true;
+    if (message.type === MSG_BRIDGE_STATUS) {
+      return respond(handleBridgeStatus(message, sender), sendResponse);
+    }
+    if (message.type === MSG_ARM) return respond(handleArm(message, sender), sendResponse);
+    return false;
   });
   c.webNavigation?.onBeforeNavigate.addListener((details) => {
     handleBeforeNavigate(details);
