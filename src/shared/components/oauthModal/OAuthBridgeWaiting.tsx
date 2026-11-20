@@ -1,10 +1,13 @@
 "use client";
 
-import { Spinner } from "../Loading";
 import Button from "@/shared/components/Button";
+import ProviderSignInStatus from "./ProviderSignInStatus";
 
 type OAuthBridgeWaitingStepProps = {
-  title: string;
+  providerId?: string;
+  providerName?: string;
+  /** Overrides "Waiting for you to approve on <provider>". */
+  title?: string;
   description: string;
   pasteInsteadLabel: string;
   onPasteInstead: () => void;
@@ -12,22 +15,25 @@ type OAuthBridgeWaitingStepProps = {
 
 /** Remote-mode waiting panel while the Sign-in Helper extension carries the OAuth redirect. */
 export default function OAuthBridgeWaitingStep({
+  providerId,
+  providerName,
   title,
   description,
   pasteInsteadLabel,
   onPasteInstead,
 }: OAuthBridgeWaitingStepProps) {
   return (
-    <div className="text-center py-6">
-      <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-        <Spinner size="lg" label={title} />
-      </div>
-      <h3 className="text-lg mb-2">{title}</h3>
-      <p className="text-sm text-text-muted mb-4">{description}</p>
+    <ProviderSignInStatus
+      state="waiting"
+      providerId={providerId}
+      providerName={providerName}
+      title={title}
+      description={description}
+    >
       <Button variant="ghost" onClick={onPasteInstead}>
         {pasteInsteadLabel}
       </Button>
-    </div>
+    </ProviderSignInStatus>
   );
 }
 

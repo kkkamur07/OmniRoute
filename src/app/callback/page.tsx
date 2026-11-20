@@ -1,8 +1,14 @@
 "use client";
 
+import Button from "@/shared/components/Button";
 import Card from "@/shared/components/Card";
 import Icon from "@/shared/components/Icon";
 import { Spinner } from "@/shared/components/Loading";
+import ProviderSignInStatus from "@/shared/components/oauthModal/ProviderSignInStatus";
+import {
+  takeSignInAttempt,
+  type SignInAttempt,
+} from "@/shared/components/oauthModal/signInAttempt";
 
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
@@ -17,11 +23,24 @@ import { useEffect, useState } from "react";
  *   1. postMessage to window.opener (may be null after COOP cross-origin nav)
  *   2. BroadcastChannel (same-origin, works across browsing context groups)
  *   3. localStorage storage event (works across browsing context groups)
+ *
+ * The provider is named from the same-origin attempt handoff the Connect dialog stored under
+ * this `state` (oauthModal/signInAttempt.ts); without it the page shows a generic label.
  */
+
+type CallbackStatus = "processing" | "success" | "done" | "manual" | "error";
+/** The Sign-in Helper closes a bridged tab after 3 s; count down the same span. */
+const HANDOFF_CLOSE_MS = 3000;
+const OPENER_CLOSE_MS = 1500;
 export default function CallbackPage() {
-  const [status, setStatus] = useState<"processing" | "success" | "done" | "manual">("processing");
+  const [status, setStatus] = useState<CallbackStatus>("processing");
   const [currentUrl] = useState(() => (typeof window === "undefined" ? "" : window.location.href));
+  const [attempt, setAttempt] = useState<SignInAttempt | null>(null);
+  const [providerError, setProviderError] = useState("");
+  const [closeIn, setCloseIn] = useState<number | null>(null);
+  const [viaHandoff, setViaHandoff] = useState(false);
   const t = useTranslations("auth");
+  const ts = useTranslations("oauthModal");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -50,8 +69,21 @@ export default function CallbackPage() {
 
     let sent = false;
     let openerSameOrigin = false;
-    const queueStatusUpdate = (nextStatus: "processing" | "success" | "done" | "manual") => {
+    const queueStatusUpdate = (nextStatus: CallbackStatus) => {
       queueMicrotask(() => setStatus(nextStatus));
+    };
+    const knownAttempt = takeSignInAttempt(state);
+    if (knownAttempt) queueMicrotask(() => setAttempt(knownAttempt));
+    // Counts down, then closes the tab (a script-opened tab may close itself); if the
+    // browser refuses, the page settles on "close this tab now".
+    const closeAfter = (ms: number) => {
+      queueMicrotask(() => setCloseIn(Math.ceil(ms / 1000)));
+      const tick = setInterval(() => setCloseIn((s) => (s && s > 1 ? s - 1 : s)), 1000);
+      setTimeout(() => {
+        clearInterval(tick);
+        window.close();
+        setTimeout(() => setStatus("done"), 500);
+      }, ms);
     };
 
     if (window.opener) {
@@ -118,14 +150,21 @@ export default function CallbackPage() {
       console.log("localStorage failed:", e);
     }
 
-    if (sent && (code || error)) {
+    if (error) {
+      // Relayed above so the dialog shows it too; this tab explains and links back.
+      queueMicrotask(() => setProviderError(errorDescription || error));
+      queueStatusUpdate("error");
+    } else if (sent && code) {
       if (window.opener && openerSameOrigin) {
         queueStatusUpdate("success");
-        setTimeout(() => {
-          window.close();
-          // If close is prevented (browser policy), fall through to manual close prompt.
-          setTimeout(() => setStatus("done"), 500);
-        }, 1500);
+        // If close is prevented (browser policy), falls through to the manual close prompt.
+        closeAfter(OPENER_CLOSE_MS);
+      } else if (knownAttempt) {
+        // A Connect dialog on this origin started this attempt and listens on the
+        // BroadcastChannel/localStorage relay (e.g. the Sign-in Helper's bridged tab).
+        queueMicrotask(() => setViaHandoff(true));
+        queueStatusUpdate("success");
+        closeAfter(HANDOFF_CLOSE_MS);
       } else {
         // Opened as a tab, opener severed by COOP, or remote dashboard using a
         // loopback/tunnel callback. Keep the full URL visible as a manual fallback
@@ -153,15 +192,48 @@ export default function CallbackPage() {
         )}
 
         {(status === "success" || status === "done") && (
-          <>
-            <div className="size-16 mx-auto mb-4 rounded-full bg-success-bg flex items-center justify-center">
-              <Icon name="check_circle" size={30} className="text-success" />
-            </div>
-            <h1 className="ci-heading text-xl mb-2">{t("authSuccess")}</h1>
-            <p className="text-text-muted">
-              {status === "success" ? t("windowWillClose") : t("closeTabNow")}
-            </p>
-          </>
+          <ProviderSignInStatus
+            state="success"
+            headingLevel="h1"
+            providerId={attempt?.provider}
+            providerName={attempt?.providerName}
+            title={ts("statusSignedInTitle")}
+            description={
+              <>
+                <p>{ts("statusCloseTab")}</p>
+                {status === "success" && closeIn !== null && (
+                  <p className="mt-1 text-xs opacity-80">
+                    {viaHandoff
+                      ? ts("statusTabClosing", { seconds: closeIn })
+                      : t("windowWillClose")}
+                  </p>
+                )}
+              </>
+            }
+          >
+            {viaHandoff && (
+              <details className="w-full text-left text-xs text-text-muted">
+                <summary className="cursor-pointer text-center">{ts("statusCopyUrlHint")}</summary>
+                <div className="mt-2 bg-bg-subtle border border-border rounded-lg p-3">
+                  <code className="break-all">{currentUrl}</code>
+                </div>
+              </details>
+            )}
+          </ProviderSignInStatus>
+        )}
+
+        {status === "error" && (
+          <ProviderSignInStatus
+            state="error"
+            headingLevel="h1"
+            providerId={attempt?.provider}
+            providerName={attempt?.providerName}
+            description={providerError || ts("statusFailedFallback")}
+          >
+            <Button onClick={() => window.location.assign("/dashboard")} fullWidth>
+              {ts("statusBackToOmniRoute")}
+            </Button>
+          </ProviderSignInStatus>
         )}
 
         {status === "manual" && (
