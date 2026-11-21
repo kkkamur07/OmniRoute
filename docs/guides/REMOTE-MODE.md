@@ -267,9 +267,9 @@ extension.
 Connect on a supported provider. When the helper is missing, the dialog shows "Add OmniRoute
 Sign-in Helper", which opens the extension's store page in a new tab. After you add it, the
 dialog notices by itself (it checks every 2 seconds) and shows "Allow on <your host>". That
-button opens a small window that names your dashboard origin; click Allow there and accept the
-browser prompt (one time per dashboard origin). The dialog then detects the helper without a
-reload and continues the sign-in. If the browser blocks the provider tab from opening on its
+button opens a small window that names your dashboard origin; click Allow there (one time per
+dashboard origin, no browser permission prompt) and the window closes itself. The dialog then
+continues the sign-in without a reload. If the browser blocks the provider tab from opening on its
 own, click Continue.
 
 You can always choose "Paste the link instead", and tick "Always paste the link" to stop
@@ -280,8 +280,11 @@ setup step and go straight to the paste flow with a one-line note.
 "Load unpacked", and choose the `packages/oauth-bridge-extension` folder. The manifest `key`
 keeps the same extension ID, so the dashboard detects it. A self-hosted build with a different
 ID sets `NEXT_PUBLIC_OAUTH_HELPER_EXTENSION_ID` (and optionally
-`NEXT_PUBLIC_OAUTH_HELPER_STORE_URL`) at build time. You can still approve a dashboard from the
-extension popup while on the dashboard tab.
+`NEXT_PUBLIC_OAUTH_HELPER_STORE_URL`) at build time. That variable also feeds the dashboard's Content-Security-Policy
+(`frame-src 'self' chrome-extension://<EXTENSION_ID>`, from
+`scripts/build/oauth-bridge-csp.mjs`), which lets the dashboard embed the helper's hidden
+`bridge.html` frame; without it a different build is never detected. The toolbar popup only
+lists approved dashboards and lets you remove them.
 
 **Supported providers:** mainly `codex` / `openai`, `claude`, `xai-oauth` and `grok-cli`. The
 registry in `src/lib/oauth/externalRedirects.ts` also marks `devin-desktop`, `chatgpt`

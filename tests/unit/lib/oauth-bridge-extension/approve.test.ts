@@ -4,21 +4,23 @@ import assert from "node:assert/strict";
 const EXT_ID = "gmckjokkoeeokoldknjmaipdbnceldil";
 const BASE = `chrome-extension://${EXT_ID}/`;
 
-interface Script {
-  id: string;
-  matches: string[];
-}
 const mock = {
   local: new Map<string, unknown>(),
-  granted: new Set<string>(),
-  scripts: [] as Script[],
-  tabs: [] as { id: number; url: string }[],
-  injected: [] as number[],
-  queries: [] as string[],
+  broadcasts: [] as unknown[],
+  removedTabs: [] as number[],
+  broadcastFails: false,
 };
 
+// No permissions or scripting namespace: approval must not need either any more.
 (globalThis as unknown as Record<string, unknown>).chrome = {
-  runtime: { id: EXT_ID, getURL: (p: string) => `${BASE}${p}` },
+  runtime: {
+    id: EXT_ID,
+    getURL: (p: string) => `${BASE}${p}`,
+    sendMessage: async (message: unknown) => {
+      mock.broadcasts.push(message);
+      if (mock.broadcastFails) throw new Error("Receiving end does not exist.");
+    },
+  },
   storage: {
     local: {
       get: async (key: string) => (mock.local.has(key) ? { [key]: mock.local.get(key) } : {}),
@@ -27,44 +29,58 @@ const mock = {
       },
     },
   },
-  permissions: {
-    contains: async (q: { origins: string[] }) => q.origins.every((o) => mock.granted.has(o)),
-  },
   tabs: {
-    query: async (q: { url: string }) => {
-      mock.queries.push(q.url);
-      return structuredClone(mock.tabs);
-    },
-  },
-  scripting: {
-    getRegisteredContentScripts: async () => structuredClone(mock.scripts),
-    unregisterContentScripts: async () => {
-      mock.scripts = [];
-    },
-    registerContentScripts: async (s: Script[]) => {
-      mock.scripts = structuredClone(s);
-    },
-    executeScript: async (o: { target: { tabId: number } }) => {
-      mock.injected.push(o.target.tabId);
+    remove: async (id: number) => {
+      mock.removedTabs.push(id);
     },
   },
 };
 
 const { approveOriginFromSearch } =
   await import("../../../../packages/oauth-bridge-extension/src/origin.js");
-const { handleApproveOrigin, isExtensionPageSender } =
+const { APPROVE_CLOSE_DELAY_MS, approvePageOrigin, handleApproveOrigin } =
   await import("../../../../packages/oauth-bridge-extension/src/background.js");
+const { approveOrigin, removeOrigin } =
+  await import("../../../../packages/oauth-bridge-extension/src/approval.js");
 
 const DASH = "https://dash.example.com";
-const pageSender = { id: EXT_ID, url: `${BASE}approve.html?origin=x`, origin: BASE.slice(0, -1) };
+const approveUrl = (origin: string) => `${BASE}approve.html?origin=${encodeURIComponent(origin)}`;
+// approve.html as the top-level page of tab 11, opened for DASH.
+const pageSender = {
+  id: EXT_ID,
+  url: approveUrl(DASH),
+  origin: BASE.slice(0, -1),
+  frameId: 0,
+  tab: { id: 11 },
+};
+const approveMsg = (over: Record<string, unknown> = {}) => ({
+  type: "approve-origin",
+  origin: DASH,
+  isFramed: false,
+  ...over,
+});
+
+/** Collects setTimer calls instead of scheduling them. */
+function timers() {
+  const calls: { fn: () => void; ms: number }[] = [];
+  return {
+    calls,
+    setTimer: (fn: () => void, ms: number) => {
+      calls.push({ fn, ms });
+      return 0;
+    },
+  };
+}
+
+const flush = async () => {
+  for (let i = 0; i < 4; i++) await new Promise((r) => setImmediate(r));
+};
 
 function reset() {
   mock.local.clear();
-  mock.granted.clear();
-  mock.scripts = [];
-  mock.tabs = [];
-  mock.injected = [];
-  mock.queries = [];
+  mock.broadcasts = [];
+  mock.removedTabs = [];
+  mock.broadcastFails = false;
 }
 
 test("approveOriginFromSearch accepts bare http(s) origins", () => {
@@ -105,69 +121,116 @@ test("approveOriginFromSearch rejects paths, queries, other schemes and junk", (
   assert.equal(approveOriginFromSearch(undefined as unknown as string), null);
 });
 
-test("isExtensionPageSender only accepts this extension's own pages", () => {
-  assert.equal(isExtensionPageSender(pageSender), true);
-  // Content script on a dashboard: same extension id, but the web page's url and origin.
-  assert.equal(
-    isExtensionPageSender({ id: EXT_ID, url: `${DASH}/dashboard`, origin: DASH, tab: { id: 1 } }),
-    false
-  );
-  // Web page spoofing the extension URL in a path or query.
-  assert.equal(isExtensionPageSender({ id: EXT_ID, url: `${DASH}/?${BASE}`, origin: DASH }), false);
-  assert.equal(isExtensionPageSender({ id: "other-extension", url: `${BASE}approve.html` }), false);
-  assert.equal(
-    isExtensionPageSender({ id: EXT_ID, url: `${BASE}approve.html`, origin: DASH }),
-    false
-  );
-  assert.equal(isExtensionPageSender({ id: EXT_ID }), false);
-  assert.equal(isExtensionPageSender(undefined), false);
+test("approvePageOrigin accepts only approve.html as a top-level tab, and returns its origin", () => {
+  assert.equal(approvePageOrigin(pageSender), DASH);
+  const rejected: unknown[] = [
+    undefined,
+    {},
+    // Framed (frameId > 0) or not in a tab.
+    { ...pageSender, frameId: 2 },
+    { ...pageSender, frameId: undefined },
+    { ...pageSender, tab: undefined },
+    // Another page of this extension, a web page, another extension.
+    { ...pageSender, url: `${BASE}bridge.html?origin=${encodeURIComponent(DASH)}` },
+    { ...pageSender, url: `${DASH}/approve.html?origin=${encodeURIComponent(DASH)}` },
+    { ...pageSender, url: `${DASH}/?${BASE}approve.html` },
+    { ...pageSender, id: "other-extension" },
+    { ...pageSender, url: approveUrl("https://dash.example.com/x") },
+    { ...pageSender, url: `${BASE}approve.html` },
+  ];
+  for (const s of rejected) assert.equal(approvePageOrigin(s), null, JSON.stringify(s));
 });
 
-test("approve-origin from a content script or web page is rejected and stores nothing", async () => {
+test("approve-origin from anything but a top-level approve page stores nothing", async () => {
   reset();
-  mock.granted.add(`${DASH}/*`);
-  const msg = { type: "approve-origin", origin: DASH };
+  const t = timers();
   for (const sender of [
-    { id: EXT_ID, url: `${DASH}/dashboard`, origin: DASH, tab: { id: 3 } },
-    { id: "evil", url: `${BASE}approve.html` },
+    { id: EXT_ID, url: `${DASH}/dashboard`, origin: DASH, frameId: 0, tab: { id: 3 } },
+    { ...pageSender, frameId: 1 },
+    { ...pageSender, url: `${BASE}bridge.html` },
+    { ...pageSender, id: "evil" },
     {},
   ]) {
-    const r = await handleApproveOrigin(msg, sender);
+    const r = await handleApproveOrigin(approveMsg(), sender, t);
     assert.deepEqual(r, { ok: false, reason: "unapproved-origin" });
   }
   assert.equal(mock.local.has("approvedOrigins"), false);
-  assert.equal(mock.scripts.length, 0);
+  assert.deepEqual(mock.broadcasts, []);
+  assert.equal(t.calls.length, 0);
 });
 
-test("approve-origin rejects invalid origins and ungranted permissions", async () => {
+test("approve-origin rejects framed pages, other origins and invalid messages", async () => {
   reset();
+  const t = timers();
   for (const origin of [`${DASH}/x`, "javascript:1", 42, undefined]) {
-    const r = await handleApproveOrigin({ type: "approve-origin", origin }, pageSender);
+    const r = await handleApproveOrigin(approveMsg({ origin }), pageSender, t);
     assert.deepEqual(r, { ok: false, reason: "invalid-message" });
   }
-  const r = await handleApproveOrigin({ type: "approve-origin", origin: DASH }, pageSender);
-  assert.deepEqual(r, { ok: false, reason: "unapproved-origin" });
+  assert.deepEqual(await handleApproveOrigin(approveMsg({ type: "x" }), pageSender, t), {
+    ok: false,
+    reason: "invalid-message",
+  });
+  const unapproved = { ok: false, reason: "unapproved-origin" };
+  // The page says it is framed, or does not say it is not.
+  assert.deepEqual(
+    await handleApproveOrigin(approveMsg({ isFramed: true }), pageSender, t),
+    unapproved
+  );
+  assert.deepEqual(
+    await handleApproveOrigin(approveMsg({ isFramed: undefined }), pageSender, t),
+    unapproved
+  );
+  // An origin other than the one the page was opened for (and shows).
+  assert.deepEqual(
+    await handleApproveOrigin(approveMsg({ origin: "https://evil.example" }), pageSender, t),
+    unapproved
+  );
   assert.equal(mock.local.has("approvedOrigins"), false);
+  assert.equal(t.calls.length, 0);
 });
 
-test("approve-origin stores the origin, registers and injects into open tabs", async () => {
+test("approve-origin stores the origin, tells bridge frames and closes the tab after ~1 s", async () => {
   reset();
   mock.local.set("approvedOrigins", ["https://old.example.com"]);
-  mock.granted.add(`${DASH}/*`);
-  mock.tabs = [
-    { id: 7, url: `${DASH}/dashboard/providers` },
-    { id: 8, url: "https://elsewhere.example.com/" },
-  ];
-  const r = await handleApproveOrigin({ type: "approve-origin", origin: DASH }, pageSender);
+  const t = timers();
+  const r = await handleApproveOrigin(approveMsg(), pageSender, t);
   assert.deepEqual(r, { ok: true });
   assert.deepEqual(mock.local.get("approvedOrigins"), ["https://old.example.com", DASH]);
-  assert.deepEqual(mock.scripts[0].matches, ["https://old.example.com/*", `${DASH}/*`]);
-  assert.deepEqual(mock.queries, [`${DASH}/*`]);
-  assert.deepEqual(mock.injected, [7]);
+  assert.deepEqual(mock.broadcasts, [{ type: "origin-approved", origin: DASH }]);
+
+  // The tab stays open (showing "Allowed") until the timer fires, then the worker closes it.
+  assert.equal(t.calls.length, 1);
+  assert.equal(t.calls[0].ms, APPROVE_CLOSE_DELAY_MS);
+  assert.ok(APPROVE_CLOSE_DELAY_MS >= 500 && APPROVE_CLOSE_DELAY_MS <= 2000);
+  assert.deepEqual(mock.removedTabs, []);
+  t.calls[0].fn();
+  await flush();
+  assert.deepEqual(mock.removedTabs, [11]);
 
   // Approving again is idempotent.
-  await handleApproveOrigin({ type: "approve-origin", origin: DASH }, pageSender);
+  await handleApproveOrigin(approveMsg(), pageSender, timers());
   assert.deepEqual(mock.local.get("approvedOrigins"), ["https://old.example.com", DASH]);
+});
+
+test("approve-origin still succeeds and closes the tab when no bridge frame is listening", async () => {
+  reset();
+  mock.broadcastFails = true;
+  const t = timers();
+  assert.deepEqual(await handleApproveOrigin(approveMsg(), pageSender, t), { ok: true });
+  assert.deepEqual(mock.local.get("approvedOrigins"), [DASH]);
+  t.calls[0].fn();
+  await flush();
+  assert.deepEqual(mock.removedTabs, [11]);
+});
+
+test("approveOrigin / removeOrigin only edit the stored list", async () => {
+  reset();
+  const c = (globalThis as unknown as { chrome: unknown }).chrome;
+  assert.deepEqual(await approveOrigin(c, DASH), [DASH]);
+  assert.deepEqual(await approveOrigin(c, DASH), [DASH]);
+  await assert.rejects(() => approveOrigin(c, "nope"));
+  assert.deepEqual(await removeOrigin(c, DASH), []);
+  assert.deepEqual(mock.local.get("approvedOrigins"), []);
 });
 
 test("isFramed: top-level is not framed, iframes and throwing accessors are", async () => {

@@ -3,21 +3,13 @@
   "name": "OmniRoute Sign-in Helper",
   "version": "0.1.0",
   "description": "Completes OmniRoute OAuth sign-ins on remote dashboards without copy-paste.",
-  "permissions": [
-    "declarativeNetRequest",
-    "storage",
-    "scripting",
-    "webNavigation",
-    "alarms",
-    "activeTab"
-  ],
+  "permissions": ["declarativeNetRequest", "storage", "webNavigation", "alarms"],
   "host_permissions": [
     "http://127.0.0.1/*",
     "http://localhost/*",
     "https://login.microsoftonline.com/*",
     "https://platform.claude.com/*"
   ],
-  "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
@@ -29,12 +21,18 @@
   "minimum_chrome_version": "120",
   "web_accessible_resources": [
     {
-      "resources": ["ping.json", "approve.html", "src/approve.js", "src/approve.css"],
+      "resources": [
+        "approve.html",
+        "bridge.html",
+        "src/approve.js",
+        "src/approve.css",
+        "src/bridge.js"
+      ],
       "matches": ["<all_urls>"]
     }
   ],
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmfZ3zejOVOabJdSzPpxHFov6KTc73n/AadCWYidkLWesLKbgF/RRVNrhCwUkZYJcbRdRo+qa5QLdN6frjeQEU51BmmHQb2c6MGuQBDK9srWZw3HI3ehHYuvx7VCU/p53X7N3V0n+ptjN7E3yyiiGVIApGJs/7EIIN/Ny9yzlRAtzmCAmRQbAuzAIpFDhSpew/4ww5h6WBccXsn/wczAttKLDfGNEnBsnSbDDs7lymKavkSPy7MXJX2wbHYPjrfiZy6vXhneBP+rCD+6AFBJacM6E6vxAXSMSX2tNuI1/ig7IvbJUmkDk8YpuHE0F1YNuD0ngYL6mlz3EESVv4k8FZwIDAQAB",
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; frame-ancestors 'none'"
+    "extension_pages": "script-src 'self'; object-src 'self'"
   }
 }
