@@ -24,6 +24,7 @@ import {
   resolveDashboardPort,
   type LoopbackLocation,
 } from "./loopbackTunnel";
+import { resolveExternalRedirectUri } from "../externalRedirects";
 
 /**
  * Providers the `omniroute login <provider>` helper can mint a blob for.
@@ -60,7 +61,8 @@ export function buildGoogleLoopbackHint(
 
   return {
     provider,
-    redirectUri: `http://127.0.0.1:${dashboardPort}/callback`,
+    // agy shares antigravity's Google native-app loopback (external-redirect registry).
+    redirectUri: resolveExternalRedirectUri("antigravity", dashboardPort) ?? "",
     dashboardHost: location.hostname,
     dashboardPort,
     // One forward only: the callback rides the dashboard port itself.

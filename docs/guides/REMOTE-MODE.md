@@ -200,6 +200,8 @@ provider-specific port to tunnel.
 
 ## Connecting Codex / Grok on a remote install (fixed-loopback providers)
 
+To skip the paste step, see the [Sign-in helper extension](#sign-in-helper-extension).
+
 Codex, xAI (`xai-oauth`) and Grok CLI (`grok-cli`) register a **fixed** loopback
 `redirect_uri` with their upstream OAuth app. OmniRoute cannot change it — the
 provider always sends the browser back to the same hardcoded address:
@@ -245,6 +247,73 @@ active.
 > token or a `~/.codex/auth.json` session blob.
 
 ---
+
+## Sign-in helper extension
+
+On a remote dashboard (VPS, Pi, tunnel, LAN IP), some providers redirect to a fixed
+loopback (`codex`/`openai` to `http://localhost:1455/auth/callback`, `xai-oauth` to
+`http://127.0.0.1:56121/callback`, `grok-cli` to `http://127.0.0.1:56122/callback`) or to a
+provider-hosted code page (`claude` to `https://platform.claude.com/oauth/code/callback`), so
+you normally paste the URL or code back into the dialog.
+
+The OmniRoute Sign-in Helper (a Chrome MV3 extension) removes that step. The dashboard arms it
+when you click Connect. It catches only that one redirect (matching that redirect URI and that
+sign-in's `state`, one-shot, expires after 10 minutes) and sends the tab to your dashboard's own
+`/callback` page, which hands the code to the open dialog. The dialog shows "Finishing sign-in
+in the other tab" and completes by itself. No OmniRoute secret or token is given to the
+extension.
+
+**Install and approve (one click each):** in a Chromium browser (Chrome, Edge, Brave), click
+Connect on a supported provider. When the helper is missing, the dialog shows "Add OmniRoute
+Sign-in Helper", which opens the extension's store page in a new tab. After you add it, the
+dialog notices by itself (it checks every 2 seconds) and shows "Allow on <your host>". That
+button opens a small window that names your dashboard origin; click Allow there (one time per
+dashboard origin, no browser permission prompt) and the window closes itself. The dialog then
+continues the sign-in without a reload. If the browser blocks the provider tab from opening on its
+own, click Continue.
+
+You can always choose "Paste the link instead", and tick "Always paste the link" to stop
+seeing the setup step (stored in this browser's localStorage). Firefox and Safari skip the
+setup step and go straight to the paste flow with a one-line note.
+
+**Developer install:** from the repo, open `chrome://extensions`, enable Developer mode, click
+"Load unpacked", and choose the `packages/oauth-bridge-extension` folder. The manifest `key`
+keeps the same extension ID, so the dashboard detects it. A self-hosted build with a different
+ID sets `NEXT_PUBLIC_OAUTH_HELPER_EXTENSION_ID` (and optionally
+`NEXT_PUBLIC_OAUTH_HELPER_STORE_URL`) at build time. That variable also feeds the dashboard's Content-Security-Policy
+(`frame-src 'self' chrome-extension://<EXTENSION_ID>`, from
+`scripts/build/oauth-bridge-csp.mjs`), which lets the dashboard embed the helper's hidden
+`bridge.html` frame; without it a different build is never detected. The toolbar popup only
+lists approved dashboards and lets you remove them.
+
+**Supported providers:** mainly `codex` / `openai`, `claude`, `xai-oauth` and `grok-cli`. The
+registry in `src/lib/oauth/externalRedirects.ts` also marks `devin-desktop`, `chatgpt`
+(ChatGPT web), `copilot-m365-web` and `renderhour` as `bridge: "supported"`.
+**Not supported:** `antigravity` and `agy` (Google consent hangs without a live loopback
+listener; use the options in
+[Connecting Antigravity on a remote install](#connecting-antigravity-on-a-remote-install)),
+`zed-hosted` (manual URL paste) and `devin-cli` (token import only).
+
+**Fallback:** without the extension (or if arming fails within about 1.5 s) the dialog keeps
+its existing flow: the local callback server on true localhost for providers that have one,
+the paste flow elsewhere. While waiting, "Paste the URL manually instead" switches to it.
+
+### Works with any OmniRoute
+
+- The helper behaves the same on a hosted domain (https on port 443), a LAN IP or Tailscale
+  address, behind a reverse proxy, on a custom port, and on a local install where the
+  provider's loopback port is not reachable (for example Docker on localhost without port
+  1455 published).
+- The dashboard sends the helper the exact redirect URI the server's `/authorize` step
+  returned. It never guesses one from the browser address.
+- With the extension installed, every dialog uses it for a supported provider, on localhost
+  too, and does not start OmniRoute's own local callback server. Without the extension a true
+  localhost install keeps the local callback server (codex, xai-oauth, grok-cli,
+  devin-desktop). A redirect that already lands on the dashboard's own origin skips the
+  helper. The install hint is only shown on remote dashboards.
+- To see how every OAuth provider signs in (helper, dashboard callback, device code, token
+  import, or manual paste), run `npm run oauth:categories`. The source is
+  `src/lib/oauth/onboardingCategories.ts`.
 
 ## Managing tokens
 

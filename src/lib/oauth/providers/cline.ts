@@ -1,17 +1,37 @@
 import { CLINE_CONFIG } from "../constants/oauth";
 
+/**
+ * Cline's authorize endpoint takes no `state` parameter (the upstream client never sends one),
+ * so the attempt state rides inside the callback URL itself: `<origin>/callback?state=<state>`.
+ * Cline appends its `code` to that URL, the callback page reads `state` back from the query,
+ * and the dashboard's state check passes. The exchange rebuilds the same URL so the
+ * `redirect_uri` it sends matches the one given at authorize time.
+ */
+export function withClineCallbackState(redirectUri: string, state?: string | null): string {
+  if (!state) return redirectUri;
+  try {
+    const url = new URL(redirectUri);
+    url.searchParams.set("state", state);
+    return url.toString();
+  } catch {
+    const separator = redirectUri.includes("?") ? "&" : "?";
+    return `${redirectUri}${separator}state=${encodeURIComponent(state)}`;
+  }
+}
+
 export const cline = {
   config: CLINE_CONFIG,
   flowType: "authorization_code",
-  buildAuthUrl: (config, redirectUri) => {
+  buildAuthUrl: (config, redirectUri, state?: string) => {
+    const callbackUrl = withClineCallbackState(redirectUri, state);
     const params = new URLSearchParams({
       client_type: "extension",
-      callback_url: redirectUri,
-      redirect_uri: redirectUri,
+      callback_url: callbackUrl,
+      redirect_uri: callbackUrl,
     });
     return `${config.authorizeUrl}?${params.toString()}`;
   },
-  exchangeToken: async (config, code, redirectUri) => {
+  exchangeToken: async (config, code, redirectUri, _codeVerifier?: string, state?: string) => {
     try {
       // Cline embeds tokens as base64-encoded JSON in the auth code.
       // The code may be URL-encoded when pasted from the callback URL.
@@ -51,7 +71,7 @@ export const cline = {
           grant_type: "authorization_code",
           code: code,
           client_type: "extension",
-          redirect_uri: redirectUri,
+          redirect_uri: withClineCallbackState(redirectUri, state),
         }),
       });
 

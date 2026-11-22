@@ -1,0 +1,253 @@
+/*
+ * Shared by approve.html and popup.html. The values copy the OmniRoute dashboard's default
+ * "Editions" palette (packages/ui-kit/src/ci-editions.css in the OmniRoute repo): warm paper
+ * neutrals, the copper accent, pill buttons, no shadows. Light by default; dark follows the
+ * system setting.
+ */
+:root {
+  --canvas: #f3f1e9;
+  --surface: #faf9f4;
+  --surface-subtle: #eae8df;
+  --text: #20211c;
+  --text-muted: #626459;
+  --border: rgb(32 33 28 / 0.22);
+  --border-subtle: rgb(32 33 28 / 0.13);
+  --accent: #e5ac82;
+  --accent-hover: #edb78b;
+  --accent-fg: #241b15;
+  --accent-ink: #8f4d26;
+  --focus: #99562f;
+  --success: #3c735b;
+  --success-bg: #e4ece3;
+  --danger: #ae4340;
+  --danger-bg: #f5e2dc;
+  --radius-control: 0.5rem;
+  --radius-surface: 0.75rem;
+  --font: "Switzer", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #11120f;
+    --surface: #191a16;
+    --surface-subtle: #22231d;
+    --text: #f2f0e8;
+    --text-muted: #a5a69b;
+    --border: rgb(242 240 232 / 0.22);
+    --border-subtle: rgb(242 240 232 / 0.13);
+    --accent-ink: #e5ac82;
+    --focus: #e5ac82;
+    --success: #9ecbbb;
+    --success-bg: #1c3028;
+    --danger: #edaaa1;
+    --danger-bg: #382421;
+    color-scheme: dark;
+  }
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--text);
+}
+body {
+  box-sizing: border-box;
+  font: 400 0.875rem/1.5 var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+p {
+  margin: 0.5rem 0;
+}
+
+/* Brand header: the OmniRoute mark, the product name and what this page is. */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 1.25rem;
+}
+.brand-mark {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  color: var(--accent-ink);
+}
+.brand-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.brand-sub {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.25;
+}
+
+/* A card on the canvas, like the dashboard's surfaces. */
+.card {
+  padding: 1.25rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+}
+.card-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.section-label {
+  margin: 0 0 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.origin {
+  display: block;
+  margin: 1rem 0;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-subtle);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  word-break: break-all;
+}
+.muted {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.status {
+  min-height: 1.5em;
+  margin-top: 0.75rem;
+}
+.status:empty {
+  min-height: 0;
+  margin: 0;
+}
+.status.ok,
+.status.fail,
+.error {
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-control);
+}
+.status.ok {
+  color: var(--success);
+  background: var(--success-bg);
+  font-weight: 600;
+}
+.status.fail,
+.error {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+/* Buttons: pill shaped like the dashboard's; primary is the copper accent. */
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 0 1rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: 500 0.875rem/1.25 var(--font);
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  background: var(--surface-subtle);
+}
+button.primary {
+  width: 100%;
+  margin-top: 0.5rem;
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+button.remove {
+  flex: none;
+  min-height: 2rem;
+  padding: 0 0.75rem;
+  color: var(--danger);
+  font-size: 0.8125rem;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* approve.html */
+body.page-approve {
+  min-height: 100vh;
+  padding: 1.5rem;
+}
+.page-approve main {
+  max-width: 24rem;
+  margin: 0 auto;
+}
+
+/* popup.html (the toolbar popup) */
+body.page-popup {
+  width: 22rem;
+  padding: 1rem;
+}
+.page-popup .brand {
+  margin-bottom: 1rem;
+}
+.page-popup .card {
+  padding: 1rem;
+}
+.approved-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.approved-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.approved-list li:last-child {
+  border-bottom: 0;
+}
+.approved-list .origin {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+.page-popup footer {
+  margin-top: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}

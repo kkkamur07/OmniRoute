@@ -264,6 +264,11 @@
       "disposition": "separately-invoked"
     },
     {
+      "name": "check:oauth-bridge",
+      "command": "node --import tsx/esm scripts/build/oauth-bridge-manifest.mjs --check",
+      "disposition": "separately-invoked"
+    },
+    {
       "name": "check:node-runtime",
       "command": "node --import tsx scripts/check/check-supported-node-runtime.ts",
       "disposition": "separately-invoked"

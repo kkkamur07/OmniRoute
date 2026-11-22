@@ -1,6 +1,6 @@
 /**
  * #8046: PKCE_CALLBACK_SERVER_PROVIDERS (codex/xai-oauth/grok-cli) register a FIXED
- * loopback redirect_uri (e.g. http://localhost:1455/auth/callback for codex) with the
+ * loopback redirect_uri (e.g. port 1455 under /auth/callback for codex) with the
  * upstream OAuth app. That redirect only resolves on the machine actually running the
  * browser, not on whatever host serves the OmniRoute dashboard.
  *
@@ -27,21 +27,23 @@ import {
   resolveDashboardPort,
   type LoopbackLocation,
 } from "./loopbackTunnel";
+import {
+  callbackPortOf,
+  getExternalRedirect,
+  type ExternalRedirectEntry,
+} from "../externalRedirects";
 
-const PKCE_LOOPBACK_REDIRECT_HINT: Record<string, string> = {
-  codex: "http://localhost:1455/auth/callback",
-  "xai-oauth": "http://127.0.0.1:56121/callback",
-  "grok-cli": "http://127.0.0.1:56122/callback",
-  "devin-desktop": "http://127.0.0.1:59653/callback",
-};
+/**
+ * PKCE callback-server providers whose fixed loopback (URI + port) comes from the
+ * external-redirect registry. Mirrors OAuthModal's PKCE_CALLBACK_SERVER_PROVIDERS.
+ */
+const PKCE_LOOPBACK_PROVIDERS = new Set(["codex", "xai-oauth", "grok-cli", "devin-desktop"]);
 
-/** Ports the upstream OAuth apps hardcode; kept in sync with OAuthModal's redirectUri branch. */
-const PKCE_LOOPBACK_CALLBACK_PORT: Record<string, number> = {
-  codex: 1455,
-  "xai-oauth": 56121,
-  "grok-cli": 56122,
-  "devin-desktop": 59653,
-};
+const UNKNOWN_REDIRECT = "a fixed localhost callback URL";
+
+function pkceLoopbackRedirect(provider: string): ExternalRedirectEntry | undefined {
+  return PKCE_LOOPBACK_PROVIDERS.has(provider) ? getExternalRedirect(provider) : undefined;
+}
 
 /** @deprecated alias kept for callers; the shared shape lives in ./loopbackTunnel. */
 export type PkceLoopbackLocation = LoopbackLocation;
@@ -76,7 +78,8 @@ export function buildPkceLoopbackMismatchHint(
   location: PkceLoopbackLocation
 ): PkceLoopbackMismatchHint {
   const dashboardPort = resolveDashboardPort(location);
-  const callbackPort = PKCE_LOOPBACK_CALLBACK_PORT[provider] ?? null;
+  const entry = pkceLoopbackRedirect(provider);
+  const callbackPort = entry ? callbackPortOf(entry) : null;
 
   const forwards = [dashboardPort];
   if (callbackPort != null && String(callbackPort) !== dashboardPort) {
@@ -85,7 +88,7 @@ export function buildPkceLoopbackMismatchHint(
 
   return {
     provider,
-    redirectUri: PKCE_LOOPBACK_REDIRECT_HINT[provider] ?? "a fixed localhost callback URL",
+    redirectUri: entry?.redirectUri ?? UNKNOWN_REDIRECT,
     callbackPort,
     dashboardPort,
     dashboardHost: location.hostname,
@@ -100,7 +103,7 @@ export function buildPkceLoopbackMismatchHint(
  * hint above instead.
  */
 export function buildPkceLoopbackMismatchWarning(provider: string): string {
-  const redirect = PKCE_LOOPBACK_REDIRECT_HINT[provider] ?? "a fixed localhost callback URL";
+  const redirect = pkceLoopbackRedirect(provider)?.redirectUri ?? UNKNOWN_REDIRECT;
   return (
     `OmniRoute is being accessed from a LAN IP, not true localhost. ${provider}'s OAuth app ` +
     `is registered with a fixed loopback redirect (${redirect}) that only resolves on the ` +

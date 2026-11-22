@@ -12,6 +12,7 @@ import {
   resolveDashboardEmbedMode,
 } from "./scripts/build/dashboardEmbed.mjs";
 import { shouldBuildStandalone } from "./scripts/build/backendOnlyPages.mjs";
+import { oauthHelperFrameSrc } from "./scripts/build/oauth-bridge-csp.mjs";
 import {
   filterKnownInfrastructureWarnings,
   isNextIntlExtractorDynamicImportWarning,
@@ -43,6 +44,10 @@ const contentSecurityPolicy = [
   "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https: ws: wss:",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
+  // The OmniRoute Sign-in Helper's hidden bridge frame (chrome-extension://<id>/bridge.html),
+  // mounted only while a Connect dialog is open. Without it frame-src falls back to
+  // default-src 'self' and the frame is blocked.
+  oauthHelperFrameSrc(),
 ].join("; ");
 const securityHeaders = [
   {

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { buildPkceLoopbackMismatchWarning } from "../../src/lib/oauth/utils/pkceLoopbackWarning";
+import { resolveExternalRedirectUri } from "../../src/lib/oauth/externalRedirects";
 
 // #8046: Codex (and the other PKCE_CALLBACK_SERVER_PROVIDERS: xai-oauth, grok-cli)
 // register a FIXED loopback redirect_uri with the upstream OAuth app. On a LAN-IP
@@ -32,8 +33,15 @@ test("PKCE_CALLBACK_SERVER_PROVIDERS still includes codex (anchor)", () => {
   assert.ok(extractSet("PKCE_CALLBACK_SERVER_PROVIDERS").includes("codex"));
 });
 
-test("codex/openai redirectUri is still hardcoded to localhost:1455 (anchor, unchanged)", () => {
-  assert.match(modal, /redirectUri = "http:\/\/localhost:1455\/auth\/callback"/);
+test("codex/openai redirectUri is still pinned to localhost:1455 (anchor, unchanged)", () => {
+  // The literal now lives in the external-redirect registry the modal resolves from.
+  assert.match(modal, /resolveExternalRedirectUri\(provider,/);
+  for (const provider of ["codex", "openai"]) {
+    assert.equal(
+      resolveExternalRedirectUri(provider, "20128"),
+      "http://localhost:1455/auth/callback"
+    );
+  }
 });
 
 test("PKCE callback-server providers now warn (not window.open) on a LAN-IP origin (#8046 fix)", () => {

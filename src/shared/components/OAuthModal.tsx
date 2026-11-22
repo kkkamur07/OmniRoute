@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import Icon from "./Icon";
 import { isCallbackStateAcceptable } from "./oauthCallbackState";
 import { useTranslations } from "next-intl";
 import { Tabs, TabsList, TabsTrigger } from "@omniroute/ui-kit/tabs";
@@ -27,10 +26,29 @@ import GitlabDuoSetupStep from "@/shared/components/oauthModal/GitlabDuoSetupSte
 import OAuthErrorStep from "@/shared/components/oauthModal/OAuthErrorStep";
 import OAuthWaitingStep from "@/shared/components/oauthModal/OAuthWaitingStep";
 import CopilotPolicyStep from "@/shared/components/oauthModal/CopilotPolicyStep";
+import OAuthBridgeWaitingStep, {
+  OAuthBridgeInstallHint,
+} from "@/shared/components/oauthModal/OAuthBridgeWaiting";
+import ProviderSignInStatus from "@/shared/components/oauthModal/ProviderSignInStatus";
+import { rememberSignInAttempt } from "@/shared/components/oauthModal/signInAttempt";
+import {
+  BRIDGE_DOCS_URL,
+  bridgeArmRequestFrom,
+  shouldShowBridgeHint,
+  shouldStartLocalCallbackServer,
+  shouldUseBridge,
+  useOAuthBridge,
+} from "@/shared/components/oauthModal/useOAuthBridge";
+import HelperSetupStep, {
+  HelperUnsupportedNote,
+} from "@/shared/components/oauthModal/HelperSetupStep";
+import { useHelperSetup } from "@/shared/components/oauthModal/useHelperSetup";
 import { getPasteTokenCopyKeys } from "@/shared/components/oauthModal/pasteTokenCopy";
 import { parseGrokCliPasteToken } from "@/lib/oauth/utils/grokCliAuthJson";
 import { buildGoogleLoopbackHint } from "@/lib/oauth/utils/googleLoopbackHint";
 import { errorMessageFromBody } from "@/shared/utils/fetchError";
+import { DEFAULT_DISPLAY_BASE_URL } from "@/shared/hooks/useDisplayBaseUrl";
+import { resolveExternalRedirectUri } from "@/lib/oauth/externalRedirects";
 import {
   buildPkceLoopbackMismatchHint,
   type PkceLoopbackMismatchHint,
@@ -41,11 +59,22 @@ export { formatDeviceCodeRemaining } from "./OAuthModalPanels";
 const GOOGLE_OAUTH_PROVIDERS = new Set(["antigravity", "agy"]);
 
 /**
- * Providers whose OAuth server accepts only loopback redirects (any port, RFC 8252 §7.3).
- * On a remote install the browser lands on the operator's own loopback and the callback URL
- * is pasted back, as for the Google providers.
+ * Providers whose redirect_uri is pinned by the external-redirect registry: fixed loopbacks
+ * (codex/openai, xai-oauth, grok-cli, devin-desktop) and dashboard-port loopbacks (devin-cli,
+ * Google antigravity/agy, loopback-only renderhour per RFC 8252 §7.3). Off-host the browser
+ * lands on the operator's own loopback and the callback URL is pasted back.
  */
-const LOOPBACK_REDIRECT_PROVIDERS = new Set(["renderhour"]);
+const REGISTRY_REDIRECT_PROVIDERS = new Set([
+  "codex",
+  "openai",
+  "xai-oauth",
+  "grok-cli",
+  "devin-desktop",
+  "devin-cli",
+  "antigravity",
+  "agy",
+  "renderhour",
+]);
 
 /** Providers that use a local callback server on a random port (PKCE browser flow). */
 const PKCE_CALLBACK_SERVER_PROVIDERS = new Set(["codex", "xai-oauth", "grok-cli", "devin-desktop"]);
@@ -252,6 +281,11 @@ function LegacyOAuthModal({
   }, []);
 
   const { isLocalhost, isTrueLocalhost, placeholderUrl, loopbackLocation } = runtimeLocation;
+  // OmniRoute Sign-in Helper extension: carries registry redirects back to /callback. Its
+  // hidden bridge frame is mounted only while this dialog is open.
+  const { bridgeVersion, readBridgeVersion, arm } = useOAuthBridge(!!isOpen);
+  const [bridgeArmed, setBridgeArmed] = useState(false);
+  const [connectedAccount, setConnectedAccount] = useState<string | null>(null);
   const callbackProcessedRef = useRef(false);
   const flowStartedRef = useRef(false);
 
@@ -307,6 +341,8 @@ function LegacyOAuthModal({
           throw new Error(details ? `${errMsg} (${details})` : String(errMsg));
         }
 
+        const conn = data.connection as { email?: string; displayName?: string } | undefined;
+        setConnectedAccount(conn?.email || conn?.displayName || null);
         setStep("success");
         onSuccess?.();
       } catch (err) {
@@ -432,6 +468,9 @@ function LegacyOAuthModal({
   const startOAuthFlow = useCallback(
     async (opts?: { grokBrowser?: boolean; manualLoopback?: boolean }) => {
       if (!provider) return;
+      // Live read: the auto-start awaits the helper probe, so `bridgeVersion` here can be stale.
+      const liveBridgeVersion = readBridgeVersion();
+      const useBridge = shouldUseBridge({ provider, bridgeVersion: liveBridgeVersion });
       try {
         setError(null);
 
@@ -516,6 +555,14 @@ function LegacyOAuthModal({
         }
 
         let forceManual = false;
+        const hasCallbackServer = PKCE_CALLBACK_SERVER_PROVIDERS.has(provider);
+        // With the extension the bridge owns the redirect, so the local server is skipped.
+        const startLocalServer = shouldStartLocalCallbackServer({
+          provider,
+          isTrueLocalhost,
+          bridgeVersion: liveBridgeVersion,
+          hasCallbackServer,
+        });
 
         // Claude Code and Cline OAuth flows can finish on provider-hosted pages that
         // show an auth code instead of redirecting back to OmniRoute.
@@ -523,9 +570,9 @@ function LegacyOAuthModal({
         // zed-hosted's native-app sign-in redirects the browser to a local
         // 127.0.0.1:<native_app_port> callback. On true localhost that port IS the
         // dashboard's own (buildAuthUrl reuses it), so the redirect lands on the
-        // /callback relay and the popup flow auto-completes. Elsewhere (LAN/remote)
-        // the port is unreachable — nothing can auto-close the popup, so always
-        // show the manual paste-URL input.
+        // /callback relay and the popup flow auto-completes. Elsewhere (LAN/remote) an armed
+        // bridge (appended state) relays it and returns before this flag is read; without
+        // it nothing can auto-close the popup, so the manual paste-URL input is shown.
         if (
           provider === "claude" ||
           provider === "cline" ||
@@ -535,71 +582,77 @@ function LegacyOAuthModal({
         }
 
         // PKCE callback server providers (Codex and Grok Build):
-        // On localhost, spin up a local callback server and poll for the result.
+        // On true localhost without the bridge, spin up a local callback server and poll.
         // Each provider owns its registered loopback callback. A LAN IP warns (#8046).
         // On remote the server is unreachable — fall through to standard manual flow.
-        if (PKCE_CALLBACK_SERVER_PROVIDERS.has(provider)) {
-          if (isTrueLocalhost) {
-            try {
-              const serverRes = await fetch(`/api/oauth/${provider}/start-callback-server`);
-              const serverData = (await parseResponseBody(serverRes)) as Record<string, unknown>;
-              if (!serverRes.ok)
-                throw new Error(
-                  getErrorMessage(serverData, serverRes.status, t("errorCallbackServerFailed"))
-                );
-
-              if (typeof serverData.authUrl !== "string" || !serverData.authUrl) {
-                throw new Error(errorMessageFromBody(serverData, t("errorBrowserUnavailable")));
-              }
-              setAuthData({ ...serverData, redirectUri: serverData.redirectUri });
-              setStep("waiting");
-              popupRef.current = window.open(serverData.authUrl, "oauth_auth");
-
-              // If browser blocked the popup, switch to manual input step immediately
-              if (!popupRef.current) {
-                setStep("input");
-              }
-
-              setPolling(true);
-              const maxAttempts = 150;
-              for (let i = 0; i < maxAttempts; i++) {
-                await new Promise((r) => setTimeout(r, 2000));
-
-                const pollRes = await fetch(`/api/oauth/${provider}/poll-callback`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ connectionId: reauthConnection?.id }),
-                });
-                const pollData = (await parseResponseBody(pollRes)) as Record<string, unknown>;
-
-                if (pollData.success) {
-                  setStep("success");
-                  setPolling(false);
-                  onSuccess?.();
-                  return;
-                }
-
-                if (pollData.error && !pollData.pending) {
-                  throw new Error(
-                    String(
-                      pollData.errorDescription ||
-                        errorMessageFromBody(pollData, t("errorAuthorizationFailed"))
-                    )
-                  );
-                }
-              }
-
-              setPolling(false);
-              throw new Error(t("errorAuthorizationTimeout"));
-            } catch (pkceErr) {
-              console.warn(
-                `${provider} callback server failed, falling back to manual flow`,
-                pkceErr
+        // Local callback server: true once the sign-in completed; false sends it to manual.
+        const runLocalCallbackServer = async (): Promise<boolean> => {
+          try {
+            const serverRes = await fetch(`/api/oauth/${provider}/start-callback-server`);
+            const serverData = (await parseResponseBody(serverRes)) as Record<string, unknown>;
+            if (!serverRes.ok)
+              throw new Error(
+                getErrorMessage(serverData, serverRes.status, t("errorCallbackServerFailed"))
               );
-              setPolling(false);
-              forceManual = true;
+
+            if (typeof serverData.authUrl !== "string" || !serverData.authUrl) {
+              throw new Error(errorMessageFromBody(serverData, t("errorBrowserUnavailable")));
             }
-          } else if (isLocalhost && !opts?.manualLoopback) {
+            setAuthData({ ...serverData, redirectUri: serverData.redirectUri });
+            setStep("waiting");
+            popupRef.current = window.open(serverData.authUrl, "oauth_auth");
+
+            // If browser blocked the popup, switch to manual input step immediately
+            if (!popupRef.current) {
+              setStep("input");
+            }
+
+            setPolling(true);
+            const maxAttempts = 150;
+            for (let i = 0; i < maxAttempts; i++) {
+              await new Promise((r) => setTimeout(r, 2000));
+
+              const pollRes = await fetch(`/api/oauth/${provider}/poll-callback`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ connectionId: reauthConnection?.id }),
+              });
+              const pollData = (await parseResponseBody(pollRes)) as Record<string, unknown>;
+
+              if (pollData.success) {
+                setStep("success");
+                setPolling(false);
+                onSuccess?.();
+                return true;
+              }
+
+              if (pollData.error && !pollData.pending) {
+                throw new Error(
+                  String(
+                    pollData.errorDescription ||
+                      errorMessageFromBody(pollData, t("errorAuthorizationFailed"))
+                  )
+                );
+              }
+            }
+
+            setPolling(false);
+            throw new Error(t("errorAuthorizationTimeout"));
+          } catch (pkceErr) {
+            console.warn(
+              `${provider} callback server failed, falling back to manual flow`,
+              pkceErr
+            );
+            setPolling(false);
+            return false;
+          }
+        };
+
+        if (hasCallbackServer) {
+          if (startLocalServer) {
+            if (await runLocalCallbackServer()) return;
+            forceManual = true;
+          } else if (isLocalhost && !opts?.manualLoopback && !useBridge) {
             setLoopbackHint(buildPkceLoopbackMismatchHint(provider, loopbackLocation));
             setStep("loopback-mismatch");
             return;
@@ -609,46 +662,25 @@ function LegacyOAuthModal({
 
         // Authorization code flow
         // Redirect URI strategy:
-        // - Codex/OpenAI: always port 1455 (registered in OAuth app)
-        // - Devin Desktop/CLI retain the legacy localhost callback path as a fallback
-        // - Google OAuth providers (antigravity/agy): default to loopback so the
-        //   bundled native/desktop credentials keep working. Prefer 127.0.0.1 over
-        //   localhost for the Google native-app handoff; Google documents that localhost
-        //   can run into local firewall/name-resolution edge cases. The authorize route
-        //   upgrades this to the public callback when custom Google web credentials plus
-        //   NEXT_PUBLIC_BASE_URL or OMNIROUTE_PUBLIC_BASE_URL are configured.
+        // - Registry providers: the exact URI from src/lib/oauth/externalRedirects.ts (codex/
+        //   openai port 1455, Grok Build ports, Devin, Google 127.0.0.1 on the dashboard port;
+        //   the authorize route upgrades Google to the public callback when custom web
+        //   credentials plus NEXT_PUBLIC_BASE_URL or OMNIROUTE_PUBLIC_BASE_URL are configured).
         // - Other providers on remote: use actual origin (supports PUBLIC_URL env var)
         // - Localhost: use localhost:port
         let redirectUri: string;
-        if (provider === "codex" || provider === "openai") {
-          redirectUri = "http://localhost:1455/auth/callback";
-        } else if (provider === "xai-oauth" || provider === "grok-cli") {
-          // Fixed native-app loopback callback, distinct ports so both can run concurrently (#7013).
-          const grokBuildPort = provider === "xai-oauth" ? 56121 : 56122;
-          redirectUri = `http://127.0.0.1:${grokBuildPort}/callback`;
-        } else if (provider === "devin-desktop") {
-          // Fixed loopback registered by the Devin CLI login (paste-URL fallback off-host).
-          redirectUri = "http://127.0.0.1:59653/callback";
-        } else if (provider === "devin-cli") {
-          // Retained callback-path fallback for the retired browser flow.
-          const port = window.location.port || "20128";
-          redirectUri = `http://localhost:${port}/auth/callback`;
-        } else if (GOOGLE_OAUTH_PROVIDERS.has(provider)) {
-          // Google OAuth built-in credentials only accept loopback redirect URIs.
-          // Even in remote deployments we use loopback — user copies the callback URL manually.
-          const port = window.location.port || "20128";
-          redirectUri = `http://127.0.0.1:${port}/callback`;
-        } else if (LOOPBACK_REDIRECT_PROVIDERS.has(provider)) {
-          // Same origin as the dashboard on localhost, so the /callback relay reaches it.
-          const host = isTrueLocalhost ? window.location.hostname : "localhost";
-          const port = window.location.port || "20128";
-          redirectUri = `http://${host}:${port}/callback`;
+        if (REGISTRY_REDIRECT_PROVIDERS.has(provider)) {
+          redirectUri = resolveExternalRedirectUri(provider, window.location.port || "20128");
+          // renderhour relays via the dashboard origin, so keep the browser's own loopback host.
+          if (provider === "renderhour" && isTrueLocalhost) {
+            redirectUri = redirectUri.replace("//localhost:", `//${window.location.hostname}:`);
+          }
         } else if (!isLocalhost) {
           // Behind reverse proxy: use actual origin (e.g., https://omniroute.example.com/callback)
           // Supports PUBLIC_URL env var override, or falls back to window.location.origin.
           const publicUrl = process.env.NEXT_PUBLIC_BASE_URL;
           const origin =
-            publicUrl && publicUrl !== "http://localhost:20128"
+            publicUrl && publicUrl !== DEFAULT_DISPLAY_BASE_URL
               ? publicUrl.replace(/\/$/, "")
               : window.location.origin;
           redirectUri = `${origin}/callback`;
@@ -672,6 +704,25 @@ function LegacyOAuthModal({
         }
 
         setAuthData({ ...data, redirectUri: data.redirectUri || redirectUri });
+        rememberSignInAttempt(data.state, provider, providerInfo?.name); // names it on /callback
+        // Bridge: the armed extension sends the redirect for this state to our /callback.
+        // Arms the server-returned redirectUri (the one inside authUrl), never the requested one.
+        // Same-origin redirects (renderhour on a local dashboard) need no bridge: null.
+        const armRequest = bridgeArmRequestFrom(provider, data, window.location.origin);
+        const armed = useBridge && !!armRequest && (await arm(armRequest));
+        setBridgeArmed(armed);
+        if (armed) {
+          popupRef.current = null; // the extension closes the tab; no popup-closed fallback
+          setStep(window.open(data.authUrl, "oauth_auth") ? "waiting" : "input");
+          return;
+        }
+        // Not armed on true localhost after skipping the local server: nothing listens on the
+        // provider's loopback, so run the server now (base flow), else fall back to manual paste.
+        if (hasCallbackServer && isTrueLocalhost && !startLocalServer) {
+          if (await runLocalCallbackServer()) return;
+          forceManual = true;
+          setAuthData({ ...data, redirectUri: data.redirectUri || redirectUri });
+        }
 
         // For non-true-localhost (LAN IPs, remote) or manual fallback: use manual input mode (user pastes callback URL)
         if (!isTrueLocalhost || forceManual) {
@@ -705,9 +756,23 @@ function LegacyOAuthModal({
       invalidateDeviceFlow,
       grokBrowserMode,
       copilotPolicyAcknowledged,
+      readBridgeVersion,
+      arm,
+      providerInfo,
       t,
     ]
   );
+  // Sign-in Helper onboarding (browser flows only; device-code providers never bridge).
+  const helper = useHelperSetup({
+    provider: DEVICE_CODE_PROVIDERS.has(provider) ? undefined : provider,
+    isTrueLocalhost,
+    bridgeVersion,
+    active: !!isOpen && step === "helper-setup",
+    popupName: "oauth_auth",
+    abandoned: !isOpen || step === "error" || step === "loopback-mismatch",
+    onContinue: startOAuthFlow,
+  });
+  const helperGate = helper.gate;
 
   useEffect(() => {
     if (!deviceCodeExpiresAt) return;
@@ -796,10 +861,12 @@ function LegacyOAuthModal({
     }
     flowStartedRef.current = true;
     const run = async () => {
-      if (!startsInPasteMode) startOAuthFlow();
+      if (startsInPasteMode) return;
+      if (await helperGate()) setStep("helper-setup");
+      else startOAuthFlow();
     };
     run();
-  }, [isOpen, provider, startOAuthFlow]);
+  }, [isOpen, provider, startOAuthFlow, helperGate]);
 
   // Listen for OAuth callback via multiple methods
   useEffect(() => {
@@ -1180,7 +1247,21 @@ function LegacyOAuthModal({
               <GitlabDuoSetupStep onContinue={() => void startOAuthFlow()} onClose={handleClose} />
             )}
 
-            {step === "waiting" && !isDeviceCode && (
+            {step === "helper-setup" && (
+              <HelperSetupStep helper={helper} onPasteInstead={() => startOAuthFlow()} />
+            )}
+
+            {step === "waiting" && !isDeviceCode && bridgeArmed && (
+              <OAuthBridgeWaitingStep
+                providerId={provider}
+                providerName={providerInfo.name}
+                description={t("bridgeWaitingDescription")}
+                pasteInsteadLabel={t("bridgePasteInstead")}
+                onPasteInstead={() => setStep("input")}
+              />
+            )}
+
+            {step === "waiting" && !isDeviceCode && !bridgeArmed && (
               <OAuthWaitingStep
                 waitingLabel={t("waiting")}
                 completeAuthLabel={t("completeAuthInPopup")}
@@ -1199,6 +1280,13 @@ function LegacyOAuthModal({
                 polling={polling}
               />
             )}
+
+            {step === "input" &&
+              !isDeviceCode &&
+              shouldShowBridgeHint({ provider, isTrueLocalhost, bridgeVersion }) && (
+                <OAuthBridgeInstallHint label={t("bridgeInstallHint")} href={BRIDGE_DOCS_URL} />
+              )}
+            {step === "input" && !isDeviceCode && <HelperUnsupportedNote helper={helper} />}
 
             {/* Manual Input Step */}
             {step === "input" && !isDeviceCode && (
@@ -1225,18 +1313,16 @@ function LegacyOAuthModal({
 
         {/* Success Step — shown for both OAuth and paste-token flows */}
         {step === "success" && (
-          <div className="text-center py-6">
-            <div className="size-16 mx-auto mb-4 rounded-full bg-success/10 flex items-center justify-center">
-              <Icon name="check_circle" size={30} className="text-success" />
-            </div>
-            <h3 className="text-lg mb-2">{t("success")}</h3>
-            <p className="text-sm text-text-muted mb-4">
-              {t("successMessage", { providerName: providerInfo.name })}
-            </p>
+          <ProviderSignInStatus
+            state="success"
+            providerId={provider}
+            providerName={providerInfo.name}
+            account={connectedAccount}
+          >
             <Button onClick={handleClose} fullWidth>
               {t("done")}
             </Button>
-          </div>
+          </ProviderSignInStatus>
         )}
 
         {/* LAN-IP loopback mismatch (#8046) — dedicated panel; retrying this origin cannot succeed. */}

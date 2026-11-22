@@ -10,6 +10,17 @@ import Textarea from "./Textarea";
 import ChatGptSignInButton from "./ChatGptSignInButton";
 import { ChatGptPlanWelcome } from "./ChatGptPlanUi";
 import { acknowledgeChatGptPlan, shouldWelcomeChatGptPlan } from "@/shared/utils/chatgptPlanUi";
+import OAuthBridgeWaitingStep from "./oauthModal/OAuthBridgeWaiting";
+import HelperSetupStep, { HelperUnsupportedNote } from "./oauthModal/HelperSetupStep";
+import { useHelperSetup } from "./oauthModal/useHelperSetup";
+import ProviderSignInStatus from "./oauthModal/ProviderSignInStatus";
+import { rememberSignInAttempt } from "./oauthModal/signInAttempt";
+import {
+  relayedParam,
+  shouldUseBridge,
+  useOAuthBridge,
+  useOAuthCallbackRelay,
+} from "./oauthModal/useOAuthBridge";
 
 type Props = {
   isOpen: boolean;
@@ -59,6 +70,7 @@ function useChatGptAttempt(connectionId: string | undefined, t: Translator) {
         return;
       }
       stateRef.current = result.state;
+      rememberSignInAttempt(result.state, "chatgpt", "ChatGPT");
       setAttempt(result);
     } catch (err) {
       if (current === generation.current)
@@ -97,14 +109,17 @@ function ChatGptSignInDone({
 }) {
   return (
     <div className="space-y-4">
-      <p role="status">{t("connected")}</p>
-      {/* role="note": the connected line above is the dialog's one live status. */}
+      <ProviderSignInStatus
+        state="success"
+        providerId="chatgpt"
+        providerName="ChatGPT"
+        title={t("connected")}
+      >
+        {!showWelcome && <Button onClick={onFinish}>{t("done")}</Button>}
+      </ProviderSignInStatus>
+      {/* role="note": the connected status above is the dialog's one live status. */}
       {warning && <Alert variant="warning" role="note" dismissible={false} description={warning} />}
-      {showWelcome ? (
-        <ChatGptPlanWelcome onDismiss={onFinish} />
-      ) : (
-        <Button onClick={onFinish}>{t("done")}</Button>
-      )}
+      {showWelcome && <ChatGptPlanWelcome onDismiss={onFinish} />}
     </div>
   );
 }
@@ -206,26 +221,11 @@ function useChatGptCompletion(
   const [done, setDone] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
 
-  async function complete() {
-    if (!attempt || busy) return;
-    setError("");
-    try {
-      parseChatGptManualCallback(callbackUrl, { redirectUri, state: attempt.state });
-    } catch {
-      setError(t("callbackError"));
-      return;
-    }
+  async function submit(body: Record<string, unknown>) {
     setBusy(true);
     const current = generation.current;
-    const pasted = callbackUrl;
-    // Never persist the one-time code in browser storage; clear the form on submission.
-    setCallbackUrl("");
     try {
-      const result = await session({
-        action: "complete-url",
-        state: attempt.state,
-        callbackUrl: pasted,
-      });
+      const result = await session(body);
       if (current !== generation.current) return;
       stateRef.current = null;
       setShowWelcome(result.planAuthorized === true && shouldWelcomeChatGptPlan(!!connectionId));
@@ -239,7 +239,51 @@ function useChatGptCompletion(
     }
   }
 
-  return { warning, callbackUrl, setCallbackUrl, done, showWelcome, complete };
+  async function complete() {
+    if (!attempt || busy) return;
+    setError("");
+    try {
+      parseChatGptManualCallback(callbackUrl, { redirectUri, state: attempt.state });
+    } catch {
+      setError(t("callbackError"));
+      return;
+    }
+    const pasted = callbackUrl;
+    // Never persist the one-time code in browser storage; clear the form on submission.
+    setCallbackUrl("");
+    await submit({ action: "complete-url", state: attempt.state, callbackUrl: pasted });
+  }
+
+  /** Bridge relay: the redirect landed on <origin>/callback, so client_id comes from fullUrl. */
+  async function completeRelayed(code: string, clientId: string | undefined) {
+    if (!attempt || busy) return;
+    setError("");
+    await submit({ action: "complete", state: attempt.state, code, clientId });
+  }
+
+  return { warning, callbackUrl, setCallbackUrl, done, showWelcome, complete, completeRelayed };
+}
+
+/** Arms the Sign-in Helper for each new attempt whenever the extension is present (any host). */
+function useChatGptBridge(state: string | undefined) {
+  const { bridgeVersion, arm } = useOAuthBridge();
+  const [armedState, setArmedState] = useState<string | null>(null);
+  const [pasteInstead, setPasteInstead] = useState(false);
+  useEffect(() => {
+    if (!state || !shouldUseBridge({ provider: "chatgpt", bridgeVersion })) return undefined;
+    let live = true;
+    void arm({ provider: "chatgpt", state, redirectUri }).then((ok) => {
+      if (live) setArmedState(ok ? state : null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [state, bridgeVersion, arm]);
+  return {
+    armed: !!state && armedState === state && !pasteInstead,
+    setPasteInstead,
+    bridgeVersion,
+  };
 }
 
 function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Props) {
@@ -247,8 +291,21 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
   const connectionId = reauthConnection?.id;
   const lifecycle = useChatGptAttempt(connectionId, t);
   const { busy, setBusy, error, setError, attempt, setAttempt, start } = lifecycle;
-  const { warning, callbackUrl, setCallbackUrl, done, showWelcome, complete } =
+  const tOAuth = useTranslations("oauthModal");
+  const { warning, callbackUrl, setCallbackUrl, done, showWelcome, complete, completeRelayed } =
     useChatGptCompletion(lifecycle, connectionId, t);
+  const bridge = useChatGptBridge(attempt?.state);
+  const helper = useHelperSetup({
+    provider: "chatgpt",
+    bridgeVersion: bridge.bridgeVersion,
+    active: isOpen,
+  });
+  useOAuthCallbackRelay(attempt?.state, (relay) => {
+    // Back to the callback step: it shows progress, errors and Start over.
+    bridge.setPasteInstead(true);
+    if (relay.error || !relay.code) setError(t("incomplete"));
+    else void completeRelayed(relay.code, relayedParam(relay.fullUrl, "client_id"));
+  });
 
   function finish() {
     if (showWelcome) acknowledgeChatGptPlan();
@@ -260,6 +317,7 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
     setError("");
     setCallbackUrl("");
     setAttempt(null);
+    bridge.setPasteInstead(false);
     void start();
   }
 
@@ -279,15 +337,28 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
             <p className="text-text-muted">{t("description")}</p>
             <p className="rounded-lg border border-border p-3 text-sm">{t("eligibility")}</p>
             <ChatGptSignInStep attempt={attempt} busy={busy} isReauth={!!connectionId} t={t} />
-            <ChatGptCallbackStep
-              attempt={attempt}
-              busy={busy}
-              callbackUrl={callbackUrl}
-              onCallbackUrlChange={setCallbackUrl}
-              onSubmit={() => void complete()}
-              onStartOver={startOver}
-              t={t}
-            />
+            {bridge.armed ? (
+              <OAuthBridgeWaitingStep
+                providerId="chatgpt"
+                providerName="ChatGPT"
+                description={tOAuth("bridgeWaitingDescription")}
+                pasteInsteadLabel={tOAuth("bridgePasteInstead")}
+                onPasteInstead={() => bridge.setPasteInstead(true)}
+              />
+            ) : helper.view !== "none" ? (
+              <HelperSetupStep helper={helper} onPasteInstead={() => {}} />
+            ) : (
+              <ChatGptCallbackStep
+                attempt={attempt}
+                busy={busy}
+                callbackUrl={callbackUrl}
+                onCallbackUrlChange={setCallbackUrl}
+                onSubmit={() => void complete()}
+                onStartOver={startOver}
+                t={t}
+              />
+            )}
+            <HelperUnsupportedNote helper={helper} />
             {error && <Alert variant="critical" dismissible={false} description={error} />}
           </>
         )}
