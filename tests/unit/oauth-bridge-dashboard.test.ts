@@ -335,3 +335,35 @@ test("install hint stays remote-only: never on true localhost", () => {
     );
   }
 });
+
+test("Claude on a remote dashboard arms the code page inside authUrl, not the echoed request", () => {
+  // The modal requests `<dashboard>/callback`; Claude's authorize ignores it and bakes its own
+  // code page into authUrl, while the response still echoes the requested redirect. Arming the
+  // echo (same origin as the dashboard) meant no arm at all, and the user had to paste the code.
+  const dashboard = "https://omniroute2.example.com";
+  const codePage = "https://platform.claude.com/oauth/code/callback";
+  const req = bridgeArmRequestFrom(
+    "claude",
+    {
+      authUrl: `https://claude.ai/oauth/authorize?code=true&redirect_uri=${encodeURIComponent(codePage)}&state=cs`,
+      state: "cs",
+      redirectUri: `${dashboard}/callback`,
+    },
+    dashboard
+  );
+  assert.deepEqual(req, { provider: "claude", state: "cs", redirectUri: codePage });
+});
+
+test("an authUrl redirect_uri on the dashboard origin still needs no bridge", () => {
+  const dashboard = "https://dash.example.com";
+  const req = bridgeArmRequestFrom(
+    "github",
+    {
+      authUrl: `https://idp.example/authorize?redirect_uri=${encodeURIComponent(`${dashboard}/callback`)}`,
+      state: "s",
+      redirectUri: `${dashboard}/callback`,
+    },
+    dashboard
+  );
+  assert.equal(req, null);
+});

@@ -109,6 +109,19 @@ export function shouldStartLocalCallbackServer(opts: {
   );
 }
 
+/** The absolute `redirect_uri` query parameter of an authorize URL, or null. */
+function redirectUriInAuthUrl(authUrl: unknown): string | null {
+  if (typeof authUrl !== "string" || !authUrl) return null;
+  try {
+    const value = new URL(authUrl).searchParams.get("redirect_uri");
+    if (!value) return null;
+    new URL(value); // must itself be an absolute URL
+    return value;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The arm request for an /authorize response: its own state and redirectUri, never a
  * client-computed fallback. Null when either is missing, when redirectUri does not parse, or
@@ -121,7 +134,10 @@ export function bridgeArmRequestFrom(
   dashboardOrigin: string
 ): BridgeArmRequest | null {
   const state = data?.state;
-  const redirectUri = data?.redirectUri;
+  // The redirect the provider will really use is the one baked into authUrl. Some providers
+  // (Claude) ignore the requested redirect_uri and echo the request back in `redirectUri`, so
+  // prefer authUrl's and fall back to the echo when authUrl carries none.
+  const redirectUri = redirectUriInAuthUrl(data?.authUrl) ?? data?.redirectUri;
   if (typeof state !== "string" || !state) return null;
   if (typeof redirectUri !== "string" || !redirectUri) return null;
   try {
