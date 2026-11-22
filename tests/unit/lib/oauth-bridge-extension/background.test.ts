@@ -12,6 +12,7 @@ interface Mock {
   rules: Rule[];
   alarms: Map<string, unknown>;
   removedTabs: number[];
+  updatedTabs: [number, string][];
 }
 
 const mock: Mock = {
@@ -20,6 +21,7 @@ const mock: Mock = {
   rules: [],
   alarms: new Map(),
   removedTabs: [],
+  updatedTabs: [],
 };
 
 const EXT_ID = "gmckjokkoeeokoldknjmaipdbnceldil";
@@ -61,6 +63,9 @@ function area(store: Map<string, unknown>) {
     remove: async (id: number) => {
       mock.removedTabs.push(id);
     },
+    update: async (id: number, props: { url: string }) => {
+      mock.updatedTabs.push([id, props.url]);
+    },
   },
 };
 
@@ -86,6 +91,7 @@ function reset() {
   mock.rules = [];
   mock.alarms.clear();
   mock.removedTabs = [];
+  mock.updatedTabs = [];
   mock.local.set("approvedOrigins", [ORIGIN]);
 }
 
@@ -437,4 +443,41 @@ test("beforeNavigate to the zed redirect with the required params marks the tab"
     transitionQualifiers: [],
   });
   assert.deepEqual(closed, [9]);
+});
+
+test("a client-side route to the armed code page sends the tab to the dashboard", async () => {
+  reset();
+  assert.deepEqual(
+    await bg.handleArm(msg({ provider: "claude", redirectUri: CLAUDE, state: "cs" }), sender),
+    { ok: true }
+  );
+  await bg.handleArmedPageLanding({ frameId: 0, tabId: 9, url: `${CLAUDE}?code=abc&state=cs#x` });
+  assert.deepEqual(mock.updatedTabs, [[9, `${ORIGIN}/callback?code=abc&state=cs`]]);
+  const armed = Object.values(
+    mock.session.get("armed") as Record<string, { redirectedTabId?: number }>
+  );
+  assert.equal(armed[0].redirectedTabId, 9);
+});
+
+test("the landing fallback ignores other states, sub-frames and unarmed pages", async () => {
+  reset();
+  await bg.handleArm(msg({ provider: "claude", redirectUri: CLAUDE, state: "cs" }), sender);
+  await bg.handleArmedPageLanding({ frameId: 0, tabId: 9, url: `${CLAUDE}?code=abc&state=other` });
+  await bg.handleArmedPageLanding({ frameId: 2, tabId: 9, url: `${CLAUDE}?code=abc&state=cs` });
+  await bg.handleArmedPageLanding({ frameId: 0, tabId: 9, url: `${CLAUDE}/x?code=abc&state=cs` });
+  await bg.handleArmedPageLanding({ frameId: 0, tabId: 9, url: "https://evil.example/?state=cs" });
+  assert.deepEqual(mock.updatedTabs, []);
+});
+
+test("dashboardCallbackUrl mirrors the rule substitution in both modes", () => {
+  const entry = { dashboardOrigin: ORIGIN, state: "s t", stateMode: "query" };
+  assert.equal(
+    bg.dashboardCallbackUrl(entry, `${CLAUDE}?code=1&state=s`),
+    `${ORIGIN}/callback?code=1&state=s`
+  );
+  assert.equal(
+    bg.dashboardCallbackUrl({ ...entry, stateMode: "appended" }, "http://127.0.0.1:9/?user_id=1#f"),
+    `${ORIGIN}/callback?state=s%20t&user_id=1`
+  );
+  assert.equal(bg.dashboardCallbackUrl(entry, CLAUDE), null);
 });

@@ -264,6 +264,49 @@ export async function handleBeforeNavigate(details) {
   }
 }
 
+/** The dashboard /callback URL for an armed redirect `url`, mirroring the DNR substitution. */
+export function dashboardCallbackUrl(entry, url) {
+  const q = url.indexOf("?");
+  if (q < 0) return null;
+  const hash = url.indexOf("#", q);
+  const query = url.slice(q + 1, hash < 0 ? undefined : hash);
+  if (!query) return null;
+  return entry.stateMode === "appended"
+    ? `${entry.dashboardOrigin}/callback?state=${encodeURIComponent(entry.state)}&${query}`
+    : `${entry.dashboardOrigin}/callback?${query}`;
+}
+
+/**
+ * Fallback for redirects the DNR rule never sees: a provider code page reached by a client-side
+ * route change (webNavigation.onHistoryStateUpdated) or a navigation a page service worker
+ * answers (webNavigation.onCommitted). When the top frame of a tab is on an armed redirect URI
+ * (same match as the rule: the armed state, or every required param in appended mode), the tab
+ * is sent to the dashboard's /callback with the same query. The armed entry records the tab, so
+ * handleCommitted disarms the rule and closes the tab as usual.
+ */
+export async function handleArmedPageLanding(details) {
+  if (!details || details.frameId !== 0 || typeof details.url !== "string") return;
+  if (typeof details.tabId !== "number" || details.tabId < 0) return;
+  try {
+    const target = await serialized(async () => {
+      const armed = await readArmed();
+      const params = searchParamsOf(details.url);
+      const entry = Object.values(armed).find((e) =>
+        isArmedRedirectNavigation(e, details.url, params)
+      );
+      if (!entry) return null;
+      const next = dashboardCallbackUrl(entry, details.url);
+      if (!next) return null;
+      entry.redirectedTabId = details.tabId;
+      await writeArmed(armed);
+      return next;
+    });
+    if (target) await api().tabs.update(details.tabId, { url: target });
+  } catch {
+    // Best effort; the paste flow in the dashboard still works.
+  }
+}
+
 /**
  * webNavigation.onCommitted (top frame only). When a tab commits
  * `<dashboardOrigin>/callback?...state=<armed state>`, the matching rule, alarm and armed entry
@@ -431,6 +474,10 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   });
   c.webNavigation?.onCommitted.addListener((details) => {
     handleCommitted(details);
+    handleArmedPageLanding(details);
+  });
+  c.webNavigation?.onHistoryStateUpdated.addListener((details) => {
+    handleArmedPageLanding(details);
   });
   c.alarms?.onAlarm.addListener((alarm) => {
     handleAlarm(alarm);

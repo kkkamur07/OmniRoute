@@ -119,6 +119,15 @@ function startStubDashboard(): Promise<http.Server> {
       res.end("<!doctype html><title>callback</title><p id='loc'></p>");
       return;
     }
+    if (url.pathname === "/spa") {
+      // A provider page that moves to its code page with a client-side route change: no request
+      // goes out, so the DNR rule never fires.
+      const state = JSON.stringify(url.searchParams.get("state") ?? "");
+      res.end(
+        `<!doctype html><title>spa</title><script>history.pushState({}, "", "/oauth/code/callback?code=spa&state=" + ${state});</script>`
+      );
+      return;
+    }
     if (url.pathname === "/nested") {
       const inner = `http://localhost:${port}/?ext=${encodeURIComponent(url.searchParams.get("ext") ?? "")}`;
       res.end(`<!doctype html><title>nested</title><iframe id="inner" src="${inner}"></iframe>`);
@@ -145,9 +154,15 @@ async function openDashboard(origin = dashboardOrigin): Promise<Page> {
 }
 
 /** Posts an arm request to the bridge frame and resolves with its reply. */
-async function arm(page: Page, state: string, requestId: string, redirectUri = CODEX_REDIRECT_URI) {
+async function arm(
+  page: Page,
+  state: string,
+  requestId: string,
+  redirectUri = CODEX_REDIRECT_URI,
+  provider = "codex"
+) {
   return page.evaluate(
-    ({ state, requestId, redirectUri, extensionId }) =>
+    ({ state, requestId, redirectUri, extensionId, provider }) =>
       new Promise<BridgeMessage>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("no reply from extension")), 5000);
         const frame = document.getElementById("bridge") as HTMLIFrameElement;
@@ -164,14 +179,14 @@ async function arm(page: Page, state: string, requestId: string, redirectUri = C
             source: "omniroute-dashboard",
             type: "oauth-bridge:arm",
             requestId,
-            provider: "codex",
+            provider,
             state,
             redirectUri,
           },
           `chrome-extension://${extensionId}`
         );
       }),
-    { state, requestId, redirectUri, extensionId }
+    { state, requestId, redirectUri, extensionId, provider }
   );
 }
 
@@ -287,6 +302,29 @@ test("armed sign-in redirects the loopback callback to the dashboard and closes 
 
   // The rule is single use: it was removed on commit.
   await expect.poll(() => sessionRuleCount()).toBe(0);
+});
+
+test("armed Claude sign-in redirects the platform.claude.com code page to the dashboard", async () => {
+  const page = await openDashboard();
+  const codePage = "https://platform.claude.com/oauth/code/callback";
+  const reply = await arm(page, "cs-1", "req-claude", codePage, "claude");
+  expect(reply).toMatchObject({ type: "oauth-bridge:armed", requestId: "req-claude" });
+
+  // The DNR redirect fires before the request leaves the browser, so no network is needed.
+  await page.goto(`${codePage}?code=abc&state=cs-1`);
+  await page.waitForURL(`${dashboardOrigin}/callback?code=abc&state=cs-1`);
+  expect(page.url()).toBe(`${dashboardOrigin}/callback?code=abc&state=cs-1`);
+});
+
+test("a client-side route change to the armed code page still reaches the dashboard", async () => {
+  const page = await openDashboard();
+  const spaCallback = `http://localhost:${port}/oauth/code/callback`;
+  const reply = await arm(page, "spa-1", "req-spa", spaCallback);
+  expect(reply).toMatchObject({ type: "oauth-bridge:armed", requestId: "req-spa" });
+
+  await page.goto(`http://localhost:${port}/spa?state=spa-1`);
+  await page.waitForURL(`${dashboardOrigin}/callback?code=spa&state=spa-1`);
+  expect(page.url()).toBe(`${dashboardOrigin}/callback?code=spa&state=spa-1`);
 });
 
 test("a callback with a different state is not redirected", async () => {
