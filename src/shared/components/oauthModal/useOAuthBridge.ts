@@ -163,10 +163,13 @@ export function bridgeVersionOf(snapshot: BridgeSnapshot): string | null {
  * for one OAuth attempt. `bridgeVersion` is non-null only once the helper is ready on this
  * (approved) dashboard; it turns non-null by itself when the operator approves it.
  * `arm` resolves true on `armed`, false on `error`, when not ready, or after
- * BRIDGE_ARM_TIMEOUT_MS.
+ * BRIDGE_ARM_TIMEOUT_MS. `readBridgeVersion` returns the frame's version right now: a flow that
+ * starts after awaiting the probe must use it, because its `bridgeVersion` closure is from the
+ * render before the frame became ready.
  */
 export function useOAuthBridge(active: boolean = true): {
   bridgeVersion: string | null;
+  readBridgeVersion: () => string | null;
   arm: (req: BridgeArmRequest) => Promise<boolean>;
 } {
   const frame = typeof window === "undefined" ? null : getBridgeFrame();
@@ -186,7 +189,16 @@ export function useOAuthBridge(active: boolean = true): {
     [frame]
   );
 
-  return { bridgeVersion: active ? bridgeVersionOf(snapshot) : null, arm };
+  const activeRef = useRef(active);
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
+  const readBridgeVersion = useCallback(
+    (): string | null => (frame && activeRef.current ? bridgeVersionOf(frame.snapshot()) : null),
+    [frame]
+  );
+
+  return { bridgeVersion: active ? bridgeVersionOf(snapshot) : null, readBridgeVersion, arm };
 }
 
 /** True when the dashboard is open on the operator's own machine (no bridge needed). */

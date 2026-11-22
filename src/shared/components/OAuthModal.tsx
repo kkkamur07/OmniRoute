@@ -283,7 +283,7 @@ function LegacyOAuthModal({
   const { isLocalhost, isTrueLocalhost, placeholderUrl, loopbackLocation } = runtimeLocation;
   // OmniRoute Sign-in Helper extension: carries registry redirects back to /callback. Its
   // hidden bridge frame is mounted only while this dialog is open.
-  const { bridgeVersion, arm } = useOAuthBridge(!!isOpen);
+  const { bridgeVersion, readBridgeVersion, arm } = useOAuthBridge(!!isOpen);
   const [bridgeArmed, setBridgeArmed] = useState(false);
   const [connectedAccount, setConnectedAccount] = useState<string | null>(null);
   const callbackProcessedRef = useRef(false);
@@ -468,7 +468,9 @@ function LegacyOAuthModal({
   const startOAuthFlow = useCallback(
     async (opts?: { grokBrowser?: boolean; manualLoopback?: boolean }) => {
       if (!provider) return;
-      const useBridge = shouldUseBridge({ provider, bridgeVersion });
+      // Live read: the auto-start awaits the helper probe, so `bridgeVersion` here can be stale.
+      const liveBridgeVersion = readBridgeVersion();
+      const useBridge = shouldUseBridge({ provider, bridgeVersion: liveBridgeVersion });
       try {
         setError(null);
 
@@ -558,7 +560,7 @@ function LegacyOAuthModal({
         const startLocalServer = shouldStartLocalCallbackServer({
           provider,
           isTrueLocalhost,
-          bridgeVersion,
+          bridgeVersion: liveBridgeVersion,
           hasCallbackServer,
         });
 
@@ -754,7 +756,7 @@ function LegacyOAuthModal({
       invalidateDeviceFlow,
       grokBrowserMode,
       copilotPolicyAcknowledged,
-      bridgeVersion,
+      readBridgeVersion,
       arm,
       providerInfo,
       t,
